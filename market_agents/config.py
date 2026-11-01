@@ -10,16 +10,16 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _default_provider() -> str:
-    """Tự chọn theo key có sẵn: Claude > OpenRouter > Groq > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
+    """Tự chọn theo key có sẵn: Claude > Groq > OpenRouter > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
     explicit = os.getenv("MARKET_AGENTS_PROVIDER", "").strip().lower()
     if explicit:
         return explicit
     if os.getenv("ANTHROPIC_API_KEY"):
         return "claude"
-    if os.getenv("OPENROUTER_API_KEY"):
-        return "openrouter"
     if os.getenv("GROQ_API_KEY"):
         return "groq"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
     if _gemini_key():
         return "gemini"
     return "claude"

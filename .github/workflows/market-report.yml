@@ -64,7 +64,7 @@ jobs:
       - name: Chạy hệ thống agent
         if: github.event.inputs.mode != 'check-models'
         env:
-          # Chỉ cần MỘT key. Tự chọn theo thứ tự: Claude > OpenRouter > Gemini
+          # Chỉ cần MỘT key. Tự chọn theo thứ tự: Claude > Groq > OpenRouter > Gemini
           # (hoặc đặt biến MARKET_AGENTS_PROVIDER trong Settings -> Variables).
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}

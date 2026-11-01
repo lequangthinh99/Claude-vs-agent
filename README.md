@@ -49,7 +49,7 @@ Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đ
 
 Mỗi bản tin dùng khoảng 8–12 request. Với model free trên OpenRouter, cần bật tuỳ chọn cho phép dùng model miễn phí tại openrouter.ai/settings/privacy.
 
-Chỉ cần điền **một** key. Hệ thống tự chọn theo key có sẵn: Claude > OpenRouter > Gemini. Muốn chỉ định rõ thì đặt `MARKET_AGENTS_PROVIDER=openrouter`, `gemini` hoặc `claude`.
+Chỉ cần điền **một** key. Hệ thống tự chọn theo key có sẵn: Claude > Groq > OpenRouter > Gemini. Muốn chỉ định rõ thì đặt `MARKET_AGENTS_PROVIDER=openrouter`, `gemini` hoặc `claude`.
 
 Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói miễn phí của các model Gemini 3.x có thể không cho dùng Google Search (luôn báo 429); khi đó hệ thống tự bỏ search và dựa vào dữ liệu miễn phí ở trên. Khi bị giới hạn tốc độ (lỗi 429), hệ thống tự chờ rồi thử lại. Hạn mức free thực tế của tài khoản xem trong AI Studio. Lưu ý: dữ liệu gửi qua gói miễn phí có thể được Google dùng để cải thiện sản phẩm.
 
