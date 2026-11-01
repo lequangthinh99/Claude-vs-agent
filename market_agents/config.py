@@ -42,7 +42,9 @@ class Settings:
         default_factory=lambda: os.getenv("OPENROUTER_MODEL", "") or "google/gemma-4-31b-it:free"
     )
     openrouter_fallback_models: list[str] = field(
-        default_factory=lambda: _list(os.getenv("OPENROUTER_FALLBACK_MODELS", ""))
+        default_factory=lambda: _list(
+            os.getenv("OPENROUTER_FALLBACK_MODELS", "") or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        )
     )
     timezone: ZoneInfo = field(
         default_factory=lambda: ZoneInfo(os.getenv("MARKET_AGENTS_TIMEZONE", "Asia/Ho_Chi_Minh"))

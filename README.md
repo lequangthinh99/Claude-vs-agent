@@ -92,7 +92,7 @@ Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .
 |---|---|---|
 | `MARKET_AGENTS_PROVIDER` | tự chọn | `openrouter`, `gemini` hoặc `claude` |
 | `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` | Model trên OpenRouter |
-| `OPENROUTER_FALLBACK_MODELS` | (trống) | Model dự phòng, cách nhau dấu phẩy |
+| `OPENROUTER_FALLBACK_MODELS` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | Model dự phòng, cách nhau dấu phẩy |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |

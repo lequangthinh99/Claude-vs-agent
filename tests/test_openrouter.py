@@ -102,6 +102,7 @@ def test_openrouter_selected_and_default_model(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "o")
     s = Settings()
     assert s.provider == "openrouter" and s.openrouter_model == "google/gemma-4-31b-it:free"
+    assert s.openrouter_fallback_models == ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"]
     assert isinstance(make_backend(s), OpenRouterBackend)
     monkeypatch.setenv("OPENROUTER_FALLBACK_MODELS", "a:free, b:free")
     assert Settings().openrouter_fallback_models == ["a:free", "b:free"]
