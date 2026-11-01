@@ -2,6 +2,7 @@
 
     python -m market_agents.check_models                     # model chính + dự phòng đang cấu hình
     python -m market_agents.check_models model/a:free model/b:free
+    python -m market_agents.check_models --provider groq   # liệt kê model Groq rồi thử từng cái
 
 Kết quả cho mỗi model:
   OK        trả lời được VÀ gọi được tool (dùng được cho cả Agent Quản lý)
@@ -14,9 +15,14 @@ import json
 import os
 import sys
 import time
+import urllib.request
 
+from .backends.groq import GROQ_API_URL, GROQ_MODELS_URL
 from .backends.openrouter import API_URL, _http_post
 from .config import Settings
+
+# Model Groq không phải dạng chat (âm thanh, lọc nội dung, ...) -> bỏ qua khi kiểm tra
+SKIP_WORDS = ("whisper", "tts", "guard", "embed", "orpheus", "playai", "distil")
 
 PING_TOOL = {
     "type": "function",
@@ -34,12 +40,20 @@ PING_TOOL = {
 PROMPT = "Hãy gọi tool `ping` với text = \"xin chào\". Không viết gì khác."
 
 
-def check(api_key: str, model: str, post=_http_post) -> tuple[str, str, float]:
+def list_groq_models(api_key: str) -> list[str]:
+    req = urllib.request.Request(GROQ_MODELS_URL, headers={"Authorization": f"Bearer {api_key}"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    ids = sorted(m["id"] for m in data.get("data", []) if m.get("active", True))
+    return [i for i in ids if not any(w in i.lower() for w in SKIP_WORDS)]
+
+
+def check(api_key: str, model: str, post=_http_post, url: str = API_URL) -> tuple[str, str, float]:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "X-Title": "market-agents"}
     body = {"model": model, "messages": [{"role": "user", "content": PROMPT}], "tools": [PING_TOOL]}
     start = time.monotonic()
     try:
-        status, data = post(API_URL, headers, body, 120)
+        status, data = post(url, headers, body, 120)
     except Exception as exc:  # noqa: BLE001
         return "FAIL", f"lỗi mạng: {exc}", time.monotonic() - start
     elapsed = time.monotonic() - start
@@ -57,19 +71,35 @@ def check(api_key: str, model: str, post=_http_post) -> tuple[str, str, float]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
+    argv = list(sys.argv[1:] if argv is None else argv)
+    provider = "openrouter"
+    if "--provider" in argv:
+        i = argv.index("--provider")
+        provider = argv[i + 1]
+        del argv[i:i + 2]
     settings = Settings()
-    if not settings.openrouter_api_key:
-        print("Thiếu OPENROUTER_API_KEY")
-        return 1
-    models = argv or [settings.openrouter_model, *settings.openrouter_fallback_models]
+
+    if provider == "groq":
+        key, url = settings.groq_api_key, GROQ_API_URL
+        if not key:
+            print("Thiếu GROQ_API_KEY")
+            return 1
+        models = argv or list_groq_models(key)
+        print(f"Model Groq sẽ kiểm tra: {models}", flush=True)
+    else:
+        key, url = settings.openrouter_api_key, API_URL
+        if not key:
+            print("Thiếu OPENROUTER_API_KEY")
+            return 1
+        models = argv or [settings.openrouter_model, *settings.openrouter_fallback_models]
+
     rows = []
     for model in models:
-        result, note, secs = check(settings.openrouter_api_key, model)
+        result, note, secs = check(key, model, url=url)
         rows.append((model, result, f"{secs:.1f}s", note))
         print(f"{result:8} {model}  ({secs:.1f}s)  {note}", flush=True)
 
-    lines = ["## Kiểm tra model OpenRouter", "", "| Model | Kết quả | Thời gian | Ghi chú |", "|---|---|---|---|"]
+    lines = [f"## Kiểm tra model ({provider})", "", "| Model | Kết quả | Thời gian | Ghi chú |", "|---|---|---|---|"]
     lines += [f"| `{m}` | {r} | {t} | {n.replace('|', '/')} |" for m, r, t, n in rows]
     summary = os.getenv("GITHUB_STEP_SUMMARY")
     if summary:

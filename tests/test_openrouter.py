@@ -106,3 +106,24 @@ def test_openrouter_selected_and_default_model(monkeypatch):
     assert isinstance(make_backend(s), OpenRouterBackend)
     monkeypatch.setenv("OPENROUTER_FALLBACK_MODELS", "a:free, b:free")
     assert Settings().openrouter_fallback_models == ["a:free", "b:free"]
+
+
+def test_groq_backend_uses_groq_endpoint(monkeypatch):
+    from market_agents.backends.groq import GROQ_API_URL, GroqBackend
+
+    seen = []
+
+    def post(url, headers, body, timeout):
+        seen.append((url, body))
+        return text("OK")
+
+    be = GroqBackend("k", "some-model", post=post)
+    assert be.run(Agent(name="x", system="X"), "hi").text == "OK"
+    assert seen[0][0] == GROQ_API_URL and "models" not in seen[0][1]
+
+    for var in ("MARKET_AGENTS_PROVIDER", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    monkeypatch.setenv("GROQ_MODEL", "m1")
+    assert Settings().provider == "groq"
+    assert isinstance(make_backend(Settings()), GroqBackend)

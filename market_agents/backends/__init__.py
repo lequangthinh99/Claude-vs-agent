@@ -1,4 +1,4 @@
-"""Chọn nhà cung cấp AI theo biến môi trường MARKET_AGENTS_PROVIDER (claude | openrouter | gemini)."""
+"""Chọn nhà cung cấp AI theo biến môi trường MARKET_AGENTS_PROVIDER (claude | openrouter | groq | gemini)."""
 from __future__ import annotations
 
 from ..config import Settings
@@ -14,8 +14,12 @@ def make_backend(settings: Settings) -> Backend:
         from .openrouter import OpenRouterBackend
 
         return OpenRouterBackend.from_settings(settings)
+    if settings.provider == "groq":
+        from .groq import GroqBackend
+
+        return GroqBackend.from_settings(settings)
     if settings.provider == "claude":
         from .claude import ClaudeBackend
 
         return ClaudeBackend.from_settings(settings)
-    raise ValueError(f"MARKET_AGENTS_PROVIDER không hợp lệ: {settings.provider!r} (claude | openrouter | gemini)")
+    raise ValueError(f"MARKET_AGENTS_PROVIDER không hợp lệ: {settings.provider!r} (claude | openrouter | groq | gemini)")

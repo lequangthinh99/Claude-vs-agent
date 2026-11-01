@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _default_provider() -> str:
-    """Tự chọn theo key có sẵn: Claude > OpenRouter > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
+    """Tự chọn theo key có sẵn: Claude > OpenRouter > Groq > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
     explicit = os.getenv("MARKET_AGENTS_PROVIDER", "").strip().lower()
     if explicit:
         return explicit
@@ -18,6 +18,8 @@ def _default_provider() -> str:
         return "claude"
     if os.getenv("OPENROUTER_API_KEY"):
         return "openrouter"
+    if os.getenv("GROQ_API_KEY"):
+        return "groq"
     if _gemini_key():
         return "gemini"
     return "claude"
@@ -37,6 +39,8 @@ class Settings:
     claude_model: str = field(default_factory=lambda: os.getenv("MARKET_AGENTS_MODEL", "claude-opus-5-5"))
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
     gemini_api_key: str = field(default_factory=_gemini_key)
+    groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
+    groq_model: str = field(default_factory=lambda: os.getenv("GROQ_MODEL", ""))
     openrouter_api_key: str = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
     openrouter_model: str = field(
         default_factory=lambda: os.getenv("OPENROUTER_MODEL", "") or "google/gemma-4-31b-it:free"

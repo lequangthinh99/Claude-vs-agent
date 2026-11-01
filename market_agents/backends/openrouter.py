@@ -40,6 +40,10 @@ def _http_post(url: str, headers: dict, body: dict, timeout: float) -> tuple[int
 
 
 class OpenRouterBackend:
+    label = "OpenRouter"
+    api_url = API_URL
+    key_hint = "OPENROUTER_API_KEY sai hoặc đã bị thu hồi"
+
     def __init__(self, api_key: str, model: str, fallback_models: list[str] | None = None,
                  post: Callable[..., tuple[int, dict]] = _http_post, sleep=time.sleep):
         self.api_key = api_key
@@ -76,7 +80,7 @@ class OpenRouterBackend:
         delay = 10.0
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                status, data = self._post(API_URL, headers, body, REQUEST_TIMEOUT)
+                status, data = self._post(self.api_url, headers, body, REQUEST_TIMEOUT)
             except (TimeoutError, OSError) as exc:
                 status, data = 0, {"error": {"message": f"lỗi mạng: {exc}"}}
             error = data.get("error") if isinstance(data, dict) else None
@@ -94,13 +98,16 @@ class OpenRouterBackend:
                 status == 200 and not data.get("choices"))
             if not retryable or attempt == MAX_RETRIES:
                 hint = ""
-                if status == 404 or "data policy" in message.lower() or "privacy" in message.lower():
+                if self.label == "OpenRouter" and (
+                        status == 404 or "data policy" in message.lower() or "privacy" in message.lower()):
                     hint = " (kiểm tra cài đặt openrouter.ai/settings/privacy cho model miễn phí)"
                 if status == 401:
-                    hint = " (OPENROUTER_API_KEY sai hoặc đã bị thu hồi)"
-                raise AgentError(f"[{agent.name}] OpenRouter lỗi {status}/{code}: {message}{hint}")
-            log.warning("[%s] OpenRouter %s (%s), chờ %.0fs rồi thử lại (%d/%d)",
-                        agent.name, code, message[:200], delay, attempt, MAX_RETRIES)
+                    hint = f" ({self.key_hint})"
+                if status == 413:
+                    hint = " (request vượt giới hạn token/phút của gói miễn phí)"
+                raise AgentError(f"[{agent.name}] {self.label} lỗi {status}/{code}: {message}{hint}")
+            log.warning("[%s] %s %s (%s), chờ %.0fs rồi thử lại (%d/%d)",
+                        agent.name, self.label, code, message[:200], delay, attempt, MAX_RETRIES)
             self._sleep(delay)
             delay = min(delay * 2, 120.0)
         raise AssertionError("unreachable")
@@ -115,7 +122,7 @@ class OpenRouterBackend:
 
         for turn in range(1, agent.max_turns + 1):
             result.turns = turn
-            log.info("[%s] lượt %d (OpenRouter)", agent.name, turn)
+            log.info("[%s] lượt %d (%s)", agent.name, turn, self.label)
             data = self._complete(agent, self._body(agent, messages))
             usage = data.get("usage") or {}
             result.input_tokens += usage.get("prompt_tokens", 0) or 0
@@ -155,7 +162,7 @@ class OpenRouterBackend:
             if finish == "length":
                 log.warning("[%s] chạm giới hạn output, kết quả có thể bị cắt", agent.name)
             if not text:
-                raise AgentError(f"[{agent.name}] OpenRouter không trả về nội dung (finish_reason={finish})")
+                raise AgentError(f"[{agent.name}] {self.label} không trả về nội dung (finish_reason={finish})")
             result.text = text
             log.info("[%s] xong sau %d lượt (model %s, in=%d, out=%d tokens)",
                      agent.name, turn, data.get("model", self.model), result.input_tokens, result.output_tokens)

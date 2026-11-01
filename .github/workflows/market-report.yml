@@ -12,6 +12,11 @@ on:
         description: "Phiên (morning/evening). Để trống = tự chọn theo giờ VN"
         required: false
         default: ""
+      provider:
+        description: "Nhà cung cấp AI (auto = tự chọn theo key có sẵn)"
+        type: choice
+        options: [auto, openrouter, groq, gemini, claude]
+        default: auto
       mode:
         description: "report = tạo bản tin; check-models = chỉ kiểm tra model (1 request/model)"
         type: choice
@@ -49,7 +54,12 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           OPENROUTER_FALLBACK_MODELS: ${{ vars.OPENROUTER_FALLBACK_MODELS }}
-        run: python -m market_agents.check_models ${{ github.event.inputs.models }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+        run: |
+          P="${{ github.event.inputs.provider }}"
+          if [ "$P" = "groq" ]; then ARGS="--provider groq"; else ARGS=""; fi
+          python -m market_agents.check_models $ARGS ${{ github.event.inputs.models }}
 
       - name: Chạy hệ thống agent
         if: github.event.inputs.mode != 'check-models'
@@ -63,7 +73,10 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MARKET_AGENTS_MODEL: ${{ vars.MARKET_AGENTS_MODEL || 'claude-opus-5-5' }}
-          MARKET_AGENTS_PROVIDER: ${{ vars.MARKET_AGENTS_PROVIDER }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          # Ưu tiên: lựa chọn khi chạy tay > biến MARKET_AGENTS_PROVIDER > tự chọn
+          MARKET_AGENTS_PROVIDER: ${{ (github.event.inputs.provider != '' && github.event.inputs.provider != 'auto') && github.event.inputs.provider || vars.MARKET_AGENTS_PROVIDER }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
