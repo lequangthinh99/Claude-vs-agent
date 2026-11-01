@@ -13,11 +13,10 @@ import sys
 import time
 from datetime import datetime
 
-import anthropic
-
+from .backends import make_backend
 from .config import Settings
 from .delivery import deliver, latest_previous_report, save_report
-from .llm import AgentError
+from .llm import AgentError, Backend
 from .manager import ManagerAgent, Session
 
 log = logging.getLogger(__name__)
@@ -35,14 +34,16 @@ def seconds_until_slot(session: Session, now: datetime) -> float:
 
 
 def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
-        settings: Settings | None = None, client: anthropic.Anthropic | None = None) -> str:
+        settings: Settings | None = None, backend: Backend | None = None) -> str:
     settings = settings or Settings()
     now = datetime.now(settings.timezone)
     kind = session_kind or detect_session(now)
     filename = f"{now:%Y-%m-%d}-{kind}.md"
 
     session = Session(kind=kind, now=now, previous_report=latest_previous_report(settings, filename))
-    manager = ManagerAgent(client or anthropic.Anthropic(), settings.model)
+    backend = backend or make_backend(settings)
+    log.info("Nhà cung cấp AI: %s (model %s)", settings.provider, backend.model)
+    manager = ManagerAgent(backend)
     report = manager.run(session)
 
     save_report(settings, filename, report)

@@ -5,9 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
-import anthropic
-
-from .llm import Agent, AgentError, CustomTool
+from .llm import Agent, AgentError, Backend, CustomTool
 from .workers import build_analyst, build_collector, build_strategist
 
 log = logging.getLogger(__name__)
@@ -109,12 +107,11 @@ class Workspace:
 
 
 class ManagerAgent:
-    def __init__(self, client: anthropic.Anthropic, model: str):
-        self.client = client
-        self.model = model
-        self.collector = build_collector(model)
-        self.analyst = build_analyst(model)
-        self.strategist = build_strategist(model)
+    def __init__(self, backend: Backend):
+        self.backend = backend
+        self.collector = build_collector()
+        self.analyst = build_analyst()
+        self.strategist = build_strategist()
 
     def run(self, session: Session) -> str:
         ws = Workspace()
@@ -155,7 +152,6 @@ class ManagerAgent:
         manager = Agent(
             name="Quản lý",
             system=MANAGER_SYSTEM,
-            model=self.model,
             effort="medium",
             max_turns=20,
             custom_tools=[
@@ -188,7 +184,7 @@ class ManagerAgent:
             f"Tiêu đề báo cáo: {session.title}\n\n"
             "Hãy điều phối đội ngũ và hoàn thành báo cáo cho phiên này."
         )
-        result = manager.run(self.client, prompt)
+        result = self.backend.run(manager, prompt)
 
         if not (ws.collector and ws.analyst and ws.strategist):
             log.warning("Agent quản lý kết thúc khi chưa đủ 3 bước; ghép báo cáo dự phòng.")
@@ -197,7 +193,7 @@ class ManagerAgent:
 
     def _run_worker(self, agent: Agent, prompt: str, ws: Workspace) -> str:
         ws.log.append(agent.name)
-        result = agent.run(self.client, prompt)
+        result = self.backend.run(agent, prompt)
         return result.text
 
     @staticmethod

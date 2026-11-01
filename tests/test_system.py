@@ -10,6 +10,7 @@ import pytest
 from market_agents import main as main_mod
 from market_agents.config import Settings
 from market_agents.delivery import split_message
+from market_agents.backends.claude import ClaudeBackend
 from market_agents.llm import Agent, AgentError
 from market_agents.manager import ManagerAgent, Session
 from market_agents.scheduler import next_run
@@ -91,7 +92,7 @@ def session():
 
 def test_manager_orchestrates_all_workers():
     client = FakeClient(manager_scripts())
-    report = ManagerAgent(client, "claude-opus-5-5").run(session())
+    report = ManagerAgent(ClaudeBackend(client, "claude-opus-5-5")).run(session())
     assert report == "# BÁO CÁO CUỐI"
 
     # Analyst nhận dữ liệu thu thập + báo cáo kỳ trước; strategist nhận cả hai kết quả.
@@ -116,7 +117,7 @@ def test_manager_orchestrates_all_workers():
 
 def test_pause_turn_resends_conversation():
     client = FakeClient(manager_scripts())
-    ManagerAgent(client, "m").run(session())
+    ManagerAgent(ClaudeBackend(client, "m")).run(session())
     collector_calls = [c for c in client.calls if COL in c["system"]]
     assert len(collector_calls) == 2
     assert collector_calls[1]["messages"][-1]["role"] == "assistant"
@@ -126,7 +127,7 @@ def test_out_of_order_assignment_returns_tool_error():
     scripts = manager_scripts()
     scripts[MGR].insert(0, msg("tool_use", tool_use("t0", "assign_strategist", "sớm quá")))
     client = FakeClient(scripts)
-    ManagerAgent(client, "m").run(session())
+    ManagerAgent(ClaudeBackend(client, "m")).run(session())
     second = [c for c in client.calls if MGR in c["system"]][1]
     err = second["messages"][-1]["content"][0]
     assert err["is_error"] is True
@@ -134,20 +135,20 @@ def test_out_of_order_assignment_returns_tool_error():
 
 def test_fallback_report_when_manager_skips_steps():
     scripts = {MGR: [msg("end_turn", text("xong"))]}
-    report = ManagerAgent(FakeClient(scripts), "m").run(session())
+    report = ManagerAgent(ClaudeBackend(FakeClient(scripts), "m")).run(session())
     assert "Báo cáo ghép tự động" in report
 
 
 def test_refusal_raises():
     client = FakeClient({"X": [msg("refusal")]})
     with pytest.raises(AgentError):
-        Agent(name="x", system="X", model="m").run(client, "hi")
+        ClaudeBackend(client, "m").run(Agent(name="x", system="X"), "hi")
 
 
 def test_run_saves_report(tmp_path, monkeypatch):
     settings = Settings(reports_dir=tmp_path)
     (tmp_path / "2000-01-01-evening.md").write_text("KỲ TRƯỚC", encoding="utf-8")
-    report = main_mod.run("morning", send=False, settings=settings, client=FakeClient(manager_scripts()))
+    report = main_mod.run("morning", send=False, settings=settings, backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
     files = sorted(p.name for p in tmp_path.glob("*-morning.md"))
     assert len(files) == 1 and (tmp_path / files[0]).read_text(encoding="utf-8") == report
 

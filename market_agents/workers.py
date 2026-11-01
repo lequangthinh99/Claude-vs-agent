@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .llm import Agent, web_fetch_tool, web_search_tool
+from .llm import Agent
 
 SKILL_PATH = Path(__file__).parent / "skills" / "financial_analysis.md"
 
@@ -14,7 +14,7 @@ def load_financial_skill() -> str:
 
 COLLECTOR_SYSTEM = """\
 Bạn là **Agent Thu thập Thông tin Thị trường** trong một đội phân tích tài chính.
-Nhiệm vụ: dùng web search / web fetch để thu thập tin tức và số liệu thị trường MỚI NHẤT,
+Nhiệm vụ: dùng công cụ tìm kiếm web để thu thập tin tức và số liệu thị trường MỚI NHẤT,
 rồi trình bày lại một cách có hệ thống cho agent phân tích.
 
 Phạm vi bắt buộc phải bao phủ:
@@ -95,30 +95,28 @@ Với từng mục — USD, Vàng, BTC, Hàng hoá (dầu, đồng, bạc, nông
 """
 
 
-def build_collector(model: str) -> Agent:
+def build_collector() -> Agent:
     return Agent(
         name="Thu thập",
         system=COLLECTOR_SYSTEM,
-        model=model,
         effort="medium",
-        server_tools=[web_search_tool(max_uses=20), web_fetch_tool(max_uses=10)],
+        web_search=20,
+        web_fetch=10,
     )
 
 
-def build_analyst(model: str) -> Agent:
+def build_analyst() -> Agent:
     return Agent(
         name="Phân tích",
         system=ANALYST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()),
-        model=model,
         effort="high",
     )
 
 
-def build_strategist(model: str) -> Agent:
+def build_strategist() -> Agent:
     return Agent(
         name="Nhận định",
         system=STRATEGIST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()),
-        model=model,
         effort="high",
-        server_tools=[web_search_tool(max_uses=6)],
+        web_search=6,
     )

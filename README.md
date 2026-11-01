@@ -1,6 +1,6 @@
 # Hệ thống Agent AI phân tích thị trường
 
-Đội 4 agent AI (chạy trên Claude API) tự động gửi bản tin thị trường lúc **07:00** và **18:00** (giờ Việt Nam) mỗi ngày.
+Đội 4 agent AI (chạy trên **Gemini API — có gói miễn phí** hoặc **Claude API**) tự động gửi bản tin thị trường lúc **07:00** và **18:00** (giờ Việt Nam) mỗi ngày.
 
 ```
                         ┌──────────────────────────┐
@@ -37,10 +37,22 @@ Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đ
 1. Tóm tắt nhanh · 2. Bảng giá tham chiếu · 3. Tin chính & mức độ ảnh hưởng · 4. Phân tích diễn biến ·
 5. Nhận định USD · Vàng · BTC · Hàng hoá · 6. Lịch sự kiện · 7. Rủi ro & lưu ý
 
+## Chọn nhà cung cấp AI
+
+| | Gemini Flash | Claude |
+|---|---|---|
+| Chi phí | Có gói miễn phí (giới hạn số lượt/ngày) | Trả phí theo token |
+| Tìm web | Google Search grounding | Web search + đọc trang web |
+| Key | `GEMINI_API_KEY` — lấy miễn phí tại aistudio.google.com/apikey | `ANTHROPIC_API_KEY` |
+
+Chỉ cần điền **một** key. Nếu chỉ có `GEMINI_API_KEY`, hệ thống tự dùng Gemini. Muốn chỉ định rõ thì đặt `MARKET_AGENTS_PROVIDER=gemini` hoặc `claude`.
+
+Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Khi bị giới hạn tốc độ (lỗi 429), hệ thống tự chờ rồi thử lại. Hạn mức free thực tế của tài khoản xem trong AI Studio. Lưu ý: dữ liệu gửi qua gói miễn phí có thể được Google dùng để cải thiện sản phẩm.
+
 ## Cách 1 — Chạy tự động bằng GitHub Actions (khuyên dùng, không cần máy chủ)
 
 1. Vào **Settings → Secrets and variables → Actions → New repository secret** và thêm:
-   - `ANTHROPIC_API_KEY` (bắt buộc — lấy tại console.anthropic.com)
+   - `GEMINI_API_KEY` (miễn phí, aistudio.google.com/apikey) **hoặc** `ANTHROPIC_API_KEY` (console.anthropic.com)
    - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - và/hoặc Email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_EMAIL_TO`
 2. Workflow `.github/workflows/market-report.yml` chạy lúc 06:35 và 17:35 giờ VN, tạo báo cáo rồi **giữ lại tới đúng 07:00 / 18:00** mới gửi, sau đó commit báo cáo vào `reports/`.
@@ -74,13 +86,15 @@ Hoặc dùng cron (máy đặt giờ VN): `35 6,17 * * * cd /đường/dẫn && 
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model cho tất cả agent |
+| `MARKET_AGENTS_PROVIDER` | tự chọn | `gemini` hoặc `claude` |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
+| `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |
 | `MARKET_AGENTS_LEAD_MINUTES` | `25` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
 
 ## Chi phí ước tính
 
-Mỗi bản tin gồm ~25–35 lượt tìm kiếm web và 4 agent. Ước tính thô **khoảng 1–3 USD/bản tin** (≈ 60–180 USD/tháng cho 2 bản/ngày) — con số chưa đo thực tế; hãy xem mục Usage trên console.anthropic.com sau vài ngày chạy. Giảm chi phí: hạ `max_uses` của web search trong `workers.py`, hoặc đặt `MARKET_AGENTS_MODEL=claude-sonnet-5-5`.
+**Gemini:** miễn phí trong hạn mức free tier. **Claude:** mỗi bản tin gồm ~25–35 lượt tìm kiếm web và 4 agent. Ước tính thô **khoảng 1–3 USD/bản tin** (≈ 60–180 USD/tháng cho 2 bản/ngày) — con số chưa đo thực tế; hãy xem mục Usage trên console.anthropic.com sau vài ngày chạy. Giảm chi phí: hạ `max_uses` của web search trong `workers.py`, đặt `MARKET_AGENTS_MODEL=claude-sonnet-5-5`, hoặc chuyển sang Gemini.
 
 ## Kiểm thử
 
