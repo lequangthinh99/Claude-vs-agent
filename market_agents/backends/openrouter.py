@@ -65,7 +65,7 @@ class OpenRouterBackend:
 
     def _body(self, agent: Agent, messages: list[dict]) -> dict:
         body: dict[str, Any] = {"model": self.model, "messages": messages}
-        if self.fallback_models:
+        if self.fallback_models and not self.client_side_fallback:  # tham số riêng của OpenRouter
             body["models"] = [self.model, *self.fallback_models]
         if agent.custom_tools:
             body["tools"] = [

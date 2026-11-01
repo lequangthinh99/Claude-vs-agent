@@ -135,6 +135,7 @@ def test_groq_client_side_fallback():
     models = []
 
     def post(url, headers, body, timeout):
+        assert "models" not in body  # Groq không nhận tham số này
         models.append(body["model"])
         if body["model"] == "big":
             return 413, {"error": {"message": "Request too large"}}
