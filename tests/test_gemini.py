@@ -82,7 +82,7 @@ def session():
 def test_gemini_full_pipeline():
     client = FakeGenai(scripts())
     sleeps = []
-    report = ManagerAgent(GeminiBackend(client, "gemini-2.5-flash", sleep=sleeps.append)).run(session())
+    report = ManagerAgent(GeminiBackend(client, "gemini-3.8-flash", sleep=sleeps.append)).run(session())
     assert report == "# BÁO CÁO GEMINI"
     assert sleeps == [15.0]  # đã chờ rồi thử lại sau lỗi 429
 

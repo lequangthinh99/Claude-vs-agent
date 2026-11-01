@@ -38,7 +38,7 @@ jobs:
         env:
           # Chỉ cần MỘT trong hai key. Có GEMINI_API_KEY mà không có ANTHROPIC_API_KEY -> dùng Gemini.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MARKET_AGENTS_MODEL: ${{ vars.MARKET_AGENTS_MODEL || 'claude-opus-5-5' }}
           MARKET_AGENTS_PROVIDER: ${{ vars.MARKET_AGENTS_PROVIDER }}

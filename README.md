@@ -87,7 +87,7 @@ Hoặc dùng cron (máy đặt giờ VN): `35 6,17 * * * cd /đường/dẫn && 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `MARKET_AGENTS_PROVIDER` | tự chọn | `gemini` hoặc `claude` |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |
 | `MARKET_AGENTS_LEAD_MINUTES` | `25` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |

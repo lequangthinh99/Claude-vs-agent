@@ -27,7 +27,7 @@ def _gemini_key() -> str:
 class Settings:
     provider: str = field(default_factory=_default_provider)
     claude_model: str = field(default_factory=lambda: os.getenv("MARKET_AGENTS_MODEL", "claude-opus-5-5"))
-    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
     gemini_api_key: str = field(default_factory=_gemini_key)
     timezone: ZoneInfo = field(
         default_factory=lambda: ZoneInfo(os.getenv("MARKET_AGENTS_TIMEZONE", "Asia/Ho_Chi_Minh"))
