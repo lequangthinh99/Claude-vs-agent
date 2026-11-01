@@ -31,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: market-report
+  group: market-report-${{ github.event.inputs.mode || 'report' }}
   cancel-in-progress: false
 
 jobs:
