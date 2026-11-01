@@ -1,4 +1,4 @@
-"""Kiểm thử backend OpenRouter với HTTP giả."""
+"""Kiểm thử backend kiểu OpenAI (Groq) với HTTP giả."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from market_agents.backends import make_backend
-from market_agents.backends.openrouter import OpenRouterBackend
+from market_agents.backends.groq import GroqBackend
 from market_agents.config import Settings
 from market_agents.llm import Agent, AgentError
 from market_agents.manager import ManagerAgent, Session
@@ -22,7 +22,7 @@ MGR, COL, ANA, STR = (
 
 
 def text(t, finish="stop"):
-    return 200, {"model": "google/gemma-4-31b-it:free", "choices": [
+    return 200, {"model": "qwen/qwen3.8-27b", "choices": [
         {"message": {"role": "assistant", "content": t}, "finish_reason": finish}],
         "usage": {"prompt_tokens": 10, "completion_tokens": 3}}
 
@@ -58,7 +58,7 @@ def scripts():
             call("c1", "assign_collector", {"instructions": "thu thập"}),
             call("c2", "assign_analyst", {"instructions": "phân tích"}),
             call("c3", "assign_strategist", {"instructions": "nhận định"}),
-            text("# BÁO CÁO OPENROUTER"),
+            text("# BÁO CÁO GROQ"),
         ],
         COL: [(429, {"error": {"code": 429, "message": "rate limited"}}), text("DỮ LIỆU")],
         ANA: [text("PHÂN TÍCH")],
@@ -66,15 +66,15 @@ def scripts():
     }
 
 
-def test_openrouter_pipeline():
+def test_pipeline():
     http, sleeps = FakeHTTP(scripts()), []
-    be = OpenRouterBackend("k", "google/gemma-4-31b-it:free", ["nvidia/x:free"], post=http, sleep=sleeps.append)
-    assert ManagerAgent(be).run(session()) == "# BÁO CÁO OPENROUTER"
+    be = GroqBackend("k", "qwen/qwen3.8-27b", post=http, sleep=sleeps.append)
+    assert ManagerAgent(be).run(session()) == "# BÁO CÁO GROQ"
     assert sleeps == [10.0]
 
     first = http.calls[0]
-    assert first["model"] == "google/gemma-4-31b-it:free"
-    assert first["models"] == ["google/gemma-4-31b-it:free", "nvidia/x:free"]
+    assert first["model"] == "qwen/qwen3.8-27b"
+    assert "models" not in first
     assert [t["function"]["name"] for t in first["tools"]] == [
         "assign_collector", "assign_analyst", "assign_strategist"]
     col = next(c for c in http.calls if COL in c["messages"][0]["content"])
@@ -85,27 +85,16 @@ def test_openrouter_pipeline():
     assert last_mgr["messages"][-2]["tool_calls"][0]["id"] == "c3"
 
 
-def test_openrouter_errors():
+def test_errors():
     http = FakeHTTP({"X": [(401, {"error": {"code": 401, "message": "No auth"}})]})
-    with pytest.raises(AgentError, match="OPENROUTER_API_KEY"):
-        OpenRouterBackend("k", "m", post=http).run(Agent(name="x", system="X"), "hi")
+    with pytest.raises(AgentError, match="GROQ_API_KEY"):
+        GroqBackend("k", "m", post=http).run(Agent(name="x", system="X"), "hi")
 
     http = FakeHTTP({"X": [(200, {"error": {"code": 502, "message": "upstream"}}), text("OK")]})
-    out = OpenRouterBackend("k", "m", post=http, sleep=lambda _: None).run(Agent(name="x", system="X"), "hi")
+    out = GroqBackend("k", "m", post=http, sleep=lambda _: None).run(Agent(name="x", system="X"), "hi")
     assert out.text == "OK"
 
 
-def test_openrouter_selected_and_default_model(monkeypatch):
-    for var in ("MARKET_AGENTS_PROVIDER", "ANTHROPIC_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_FALLBACK_MODELS"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("GEMINI_API_KEY", "g")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "o")
-    s = Settings()
-    assert s.provider == "openrouter" and s.openrouter_model == "google/gemma-4-31b-it:free"
-    assert s.openrouter_fallback_models == ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3.5-super-vl:free"]
-    assert isinstance(make_backend(s), OpenRouterBackend)
-    monkeypatch.setenv("OPENROUTER_FALLBACK_MODELS", "a:free, b:free")
-    assert Settings().openrouter_fallback_models == ["a:free", "b:free"]
 
 
 def test_groq_backend_uses_groq_endpoint(monkeypatch):
@@ -121,7 +110,7 @@ def test_groq_backend_uses_groq_endpoint(monkeypatch):
     assert be.run(Agent(name="x", system="X"), "hi").text == "OK"
     assert seen[0][0] == GROQ_API_URL and "models" not in seen[0][1]
 
-    for var in ("MARKET_AGENTS_PROVIDER", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"):
+    for var in ("MARKET_AGENTS_PROVIDER", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("GROQ_API_KEY", "g")
     monkeypatch.setenv("GROQ_MODEL", "m1")
@@ -154,7 +143,7 @@ def test_lean_mode_keeps_manager_context_small_and_assembles_report():
     s[STR] = [text("NHẬN ĐỊNH " + long)]
     s[MGR][-1] = text("## Tóm tắt nhanh\n- ý chính")
     http = FakeHTTP(s)
-    be = OpenRouterBackend("k", "m", post=http, sleep=lambda _: None)
+    be = GroqBackend("k", "m", post=http, sleep=lambda _: None)
     sess = session()
     sess.previous_report = "P" * 9000
     report = ManagerAgent(be, lean=True).run(sess)
@@ -172,7 +161,7 @@ def test_wait_uses_retry_hint():
     sleeps = []
     http = FakeHTTP({"X": [(429, {"error": {"code": "rate_limit_exceeded",
                                             "message": "Please try again in 7.5s. Need more"}}), text("OK")]})
-    OpenRouterBackend("k", "m", post=http, sleep=sleeps.append).run(Agent(name="x", system="X"), "hi")
+    GroqBackend("k", "m", post=http, sleep=sleeps.append).run(Agent(name="x", system="X"), "hi")
     assert sleeps == [8.5]
 
 
@@ -180,7 +169,7 @@ def test_lean_default_for_groq(monkeypatch):
     monkeypatch.delenv("MARKET_AGENTS_LEAN", raising=False)
     monkeypatch.setenv("MARKET_AGENTS_PROVIDER", "groq")
     assert Settings().lean is True
-    monkeypatch.setenv("MARKET_AGENTS_PROVIDER", "openrouter")
+    monkeypatch.setenv("MARKET_AGENTS_PROVIDER", "claude")
     assert Settings().lean is False
     monkeypatch.setenv("MARKET_AGENTS_LEAN", "1")
     assert Settings().lean is True

@@ -1,10 +1,8 @@
-"""Backend OpenRouter (API tương thích OpenAI Chat Completions), dùng được với model miễn phí.
+"""Vòng lặp agent cho các API tương thích OpenAI Chat Completions (đang dùng cho Groq).
 
 - Agent quản lý giao việc qua function calling (`tools`).
-- Không dùng tìm kiếm web của OpenRouter (tính phí): các agent dựa vào giá + tin RSS miễn phí
-  do `datafeeds.py` cung cấp.
-- Có thể khai báo model dự phòng (OPENROUTER_FALLBACK_MODELS): OpenRouter tự chuyển khi
-  model chính lỗi hoặc quá tải.
+- Các agent dựa vào giá + tin RSS miễn phí do `datafeeds.py` cung cấp (không tìm web).
+- Có thể khai báo model dự phòng: khi model hiện tại lỗi hẳn, backend thử model kế tiếp.
 """
 from __future__ import annotations
 
@@ -16,12 +14,10 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
-from ..config import Settings
 from ..llm import Agent, AgentError, AgentResult
 
 log = logging.getLogger(__name__)
 
-API_URL = "https://openrouter.ai/api/v1/chat/completions"
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 MAX_RETRIES = 6
 REQUEST_TIMEOUT = 300  # giây
@@ -45,10 +41,10 @@ def _http_post(url: str, headers: dict, body: dict, timeout: float) -> tuple[int
         return exc.code, payload
 
 
-class OpenRouterBackend:
-    label = "OpenRouter"
-    api_url = API_URL
-    key_hint = "OPENROUTER_API_KEY sai hoặc đã bị thu hồi"
+class OpenAICompatBackend:
+    label = "API"
+    api_url = ""
+    key_hint = "API key sai hoặc đã bị thu hồi"
 
     def __init__(self, api_key: str, model: str, fallback_models: list[str] | None = None,
                  post: Callable[..., tuple[int, dict]] = _http_post, sleep=time.sleep):
@@ -58,18 +54,10 @@ class OpenRouterBackend:
         self._post = post
         self._sleep = sleep
 
-    @classmethod
-    def from_settings(cls, settings: Settings) -> "OpenRouterBackend":
-        if not settings.openrouter_api_key:
-            raise AgentError("Thiếu OPENROUTER_API_KEY (tạo tại openrouter.ai/settings/keys)")
-        return cls(settings.openrouter_api_key, settings.openrouter_model, settings.openrouter_fallback_models)
-
     def _body(self, agent: Agent, messages: list[dict]) -> dict:
         body: dict[str, Any] = {"model": self.model, "messages": messages}
         if agent.max_tokens <= 16000:
             body["max_tokens"] = agent.max_tokens
-        if self.fallback_models and not self.client_side_fallback:  # tham số riêng của OpenRouter
-            body["models"] = [self.model, *self.fallback_models]
         if agent.custom_tools:
             body["tools"] = [
                 {"type": "function", "function": {
@@ -97,7 +85,7 @@ class OpenRouterBackend:
             code = (error or {}).get("code", status) if isinstance(error, dict) else status
             message = (error or {}).get("message", "") if isinstance(error, dict) else str(error)
             meta = (error or {}).get("metadata") if isinstance(error, dict) else None
-            if isinstance(meta, dict):  # chi tiết lỗi từ nhà cung cấp phía sau OpenRouter
+            if isinstance(meta, dict):  # chi tiết lỗi từ nhà cung cấp (nếu có)
                 detail = meta.get("raw") or meta.get("reasons") or ""
                 provider = meta.get("provider_name") or ""
                 if detail or provider:
@@ -106,9 +94,6 @@ class OpenRouterBackend:
                 status == 200 and not data.get("choices"))
             if not retryable or attempt == MAX_RETRIES:
                 hint = ""
-                if self.label == "OpenRouter" and (
-                        status == 404 or "data policy" in message.lower() or "privacy" in message.lower()):
-                    hint = " (kiểm tra cài đặt openrouter.ai/settings/privacy cho model miễn phí)"
                 if status == 401:
                     hint = f" ({self.key_hint})"
                 if status == 413:
@@ -124,12 +109,9 @@ class OpenRouterBackend:
             delay = min(delay * 2, 120.0)
         raise AssertionError("unreachable")
 
-    # OpenRouter tự chuyển model qua tham số `models`; các nhà cung cấp khác (Groq) thì
-    # backend tự thử model kế tiếp khi model hiện tại lỗi hẳn.
-    client_side_fallback = False
-
     def _complete(self, agent: Agent, body: dict) -> dict:
-        if not self.client_side_fallback or not self.fallback_models:
+        """Thử model chính, lỗi hẳn thì chuyển sang model dự phòng kế tiếp."""
+        if not self.fallback_models:
             return self._complete_one(agent, body)
         candidates = [self.model, *self.fallback_models]
         for i, model in enumerate(candidates):

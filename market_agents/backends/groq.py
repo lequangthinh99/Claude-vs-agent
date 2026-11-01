@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from ..config import Settings
 from ..llm import AgentError
-from .openrouter import OpenRouterBackend
+from .openai_compat import OpenAICompatBackend
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
 
 
-class GroqBackend(OpenRouterBackend):
+class GroqBackend(OpenAICompatBackend):
     label = "Groq"
     api_url = GROQ_API_URL
     key_hint = "GROQ_API_KEY sai hoặc đã bị thu hồi"
-    client_side_fallback = True
 
     def _body(self, agent, messages):
         body = super()._body(agent, messages)

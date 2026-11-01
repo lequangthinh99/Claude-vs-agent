@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _default_provider() -> str:
-    """Tự chọn theo key có sẵn: Claude > Groq > OpenRouter > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
+    """Tự chọn theo key có sẵn: Claude > Groq > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
     explicit = os.getenv("MARKET_AGENTS_PROVIDER", "").strip().lower()
     if explicit:
         return explicit
@@ -18,8 +18,6 @@ def _default_provider() -> str:
         return "claude"
     if os.getenv("GROQ_API_KEY"):
         return "groq"
-    if os.getenv("OPENROUTER_API_KEY"):
-        return "openrouter"
     if _gemini_key():
         return "gemini"
     return "claude"
@@ -48,15 +46,6 @@ class Settings:
     groq_model: str = field(default_factory=lambda: os.getenv("GROQ_MODEL", "") or "openai/gpt-oss-120b")
     groq_fallback_models: list[str] = field(
         default_factory=lambda: _list(os.getenv("GROQ_FALLBACK_MODELS", "") or "qwen/qwen3.8-27b,openai/gpt-oss-20b")
-    )
-    openrouter_api_key: str = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
-    openrouter_model: str = field(
-        default_factory=lambda: os.getenv("OPENROUTER_MODEL", "") or "google/gemma-4-31b-it:free"
-    )
-    openrouter_fallback_models: list[str] = field(
-        default_factory=lambda: _list(
-            os.getenv("OPENROUTER_FALLBACK_MODELS", "") or "nvidia/nemotron-3-ultra-550b-a55b:free,nvidia/nemotron-3.5-super-vl:free"
-        )
     )
     timezone: ZoneInfo = field(
         default_factory=lambda: ZoneInfo(os.getenv("MARKET_AGENTS_TIMEZONE", "Asia/Ho_Chi_Minh"))

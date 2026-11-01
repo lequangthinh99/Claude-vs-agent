@@ -1,8 +1,7 @@
-"""Kiểm tra nhanh từng model OpenRouter: mỗi model đúng 1 request nhỏ, không thử lại.
+"""Kiểm tra nhanh từng model Groq: mỗi model đúng 1 request nhỏ, không thử lại.
 
-    python -m market_agents.check_models                     # model chính + dự phòng đang cấu hình
-    python -m market_agents.check_models model/a:free model/b:free
-    python -m market_agents.check_models --provider groq   # liệt kê model Groq rồi thử từng cái
+    python -m market_agents.check_models              # liệt kê model Groq rồi thử từng cái
+    python -m market_agents.check_models model/a model/b
 
 Kết quả cho mỗi model:
   OK        trả lời được VÀ gọi được tool (dùng được cho cả Agent Quản lý)
@@ -19,7 +18,7 @@ import urllib.error
 import urllib.request
 
 from .backends.groq import GROQ_API_URL, GROQ_MODELS_URL
-from .backends.openrouter import API_URL, USER_AGENT, _http_post
+from .backends.openai_compat import USER_AGENT, _http_post
 from .config import Settings
 
 # Model Groq không phải dạng chat (âm thanh, lọc nội dung, ...) -> bỏ qua khi kiểm tra
@@ -53,7 +52,7 @@ def list_groq_models(api_key: str) -> list[str]:
     return [i for i in ids if not any(w in i.lower() for w in SKIP_WORDS)]
 
 
-def check(api_key: str, model: str, post=_http_post, url: str = API_URL) -> tuple[str, str, float]:
+def check(api_key: str, model: str, post=_http_post, url: str = GROQ_API_URL) -> tuple[str, str, float]:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "X-Title": "market-agents"}
     body = {"model": model, "messages": [{"role": "user", "content": PROMPT}], "tools": [PING_TOOL]}
     start = time.monotonic()
@@ -77,26 +76,17 @@ def check(api_key: str, model: str, post=_http_post, url: str = API_URL) -> tupl
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    provider = "openrouter"
-    if "--provider" in argv:
+    if "--provider" in argv:  # tương thích lệnh cũ
         i = argv.index("--provider")
-        provider = argv[i + 1]
         del argv[i:i + 2]
+    provider = "groq"
     settings = Settings()
-
-    if provider == "groq":
-        key, url = settings.groq_api_key, GROQ_API_URL
-        if not key:
-            print("Thiếu GROQ_API_KEY")
-            return 1
-        models = argv or list_groq_models(key)
-        print(f"Model Groq sẽ kiểm tra: {models}", flush=True)
-    else:
-        key, url = settings.openrouter_api_key, API_URL
-        if not key:
-            print("Thiếu OPENROUTER_API_KEY")
-            return 1
-        models = argv or [settings.openrouter_model, *settings.openrouter_fallback_models]
+    key, url = settings.groq_api_key, GROQ_API_URL
+    if not key:
+        print("Thiếu GROQ_API_KEY")
+        return 1
+    models = argv or list_groq_models(key)
+    print(f"Model Groq sẽ kiểm tra: {models}", flush=True)
 
     rows = []
     for model in models:

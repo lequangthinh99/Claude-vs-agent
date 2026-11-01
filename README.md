@@ -1,6 +1,6 @@
 # Hệ thống Agent AI phân tích thị trường
 
-Đội 4 agent AI (chạy trên **OpenRouter** hoặc **Gemini** — đều có model miễn phí — hoặc **Claude API**) tự động gửi bản tin thị trường lúc **07:00** và **18:00** (giờ Việt Nam) mỗi ngày.
+Đội 4 agent AI (mặc định chạy trên **Groq** — miễn phí; có thể chuyển sang **Gemini** hoặc **Claude API**) tự động gửi bản tin thị trường lúc **07:00** và **18:00** (giờ Việt Nam) mỗi ngày.
 
 ```
                         ┌──────────────────────────┐
@@ -41,22 +41,23 @@ Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đ
 
 ## Chọn nhà cung cấp AI
 
-| | OpenRouter (Gemma 4 31B free) | Gemini Flash | Claude |
+| | Groq (gpt-oss-120b, mặc định) | Gemini Flash | Claude |
 |---|---|---|---|
-| Chi phí | Miễn phí (50 request/ngày; 1.000/ngày nếu từng nạp ≥ 10 credits) | Có gói miễn phí | Trả phí theo token |
+| Chi phí | Miễn phí (giới hạn ~8.000 token/phút) | Có gói miễn phí | Trả phí theo token |
 | Tìm web | Không (dùng giá + tin RSS miễn phí) | Gói free thường bị chặn | Web search + đọc trang |
-| Key | `OPENROUTER_API_KEY` — openrouter.ai/settings/keys | `GEMINI_API_KEY` — aistudio.google.com/apikey | `ANTHROPIC_API_KEY` |
+| Key | `GROQ_API_KEY` — console.groq.com/keys | `GEMINI_API_KEY` — aistudio.google.com/apikey | `ANTHROPIC_API_KEY` |
 
-Mỗi bản tin dùng khoảng 8–12 request. Với model free trên OpenRouter, cần bật tuỳ chọn cho phép dùng model miễn phí tại openrouter.ai/settings/privacy.
+Với Groq, hệ thống tự bật **chế độ gọn** để mỗi request nằm trong giới hạn token/phút của gói miễn phí.
+Kiểm tra model Groq nào dùng được: Actions → Run workflow → mode `check-models` (1 request nhỏ mỗi model).
 
-Chỉ cần điền **một** key. Hệ thống tự chọn theo key có sẵn: Claude > Groq > OpenRouter > Gemini. Muốn chỉ định rõ thì đặt `MARKET_AGENTS_PROVIDER=openrouter`, `gemini` hoặc `claude`.
+Chỉ cần điền **một** key. Hệ thống tự chọn theo key có sẵn: Claude > Groq > Gemini. Muốn chỉ định rõ thì đặt `MARKET_AGENTS_PROVIDER=groq`, `gemini` hoặc `claude`.
 
 Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói miễn phí của các model Gemini 3.x có thể không cho dùng Google Search (luôn báo 429); khi đó hệ thống tự bỏ search và dựa vào dữ liệu miễn phí ở trên. Khi bị giới hạn tốc độ (lỗi 429), hệ thống tự chờ rồi thử lại. Hạn mức free thực tế của tài khoản xem trong AI Studio. Lưu ý: dữ liệu gửi qua gói miễn phí có thể được Google dùng để cải thiện sản phẩm.
 
 ## Cách 1 — Chạy tự động bằng GitHub Actions (khuyên dùng, không cần máy chủ)
 
 1. Vào **Settings → Secrets and variables → Actions → New repository secret** và thêm:
-   - **Một** trong các key: `OPENROUTER_API_KEY` (openrouter.ai/settings/keys), `GEMINI_API_KEY` (aistudio.google.com/apikey) hoặc `ANTHROPIC_API_KEY` (console.anthropic.com)
+   - **Một** trong các key: `GROQ_API_KEY` (console.groq.com/keys), `GEMINI_API_KEY` (aistudio.google.com/apikey) hoặc `ANTHROPIC_API_KEY` (console.anthropic.com)
    - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - và/hoặc Email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_EMAIL_TO`
 2. Workflow `.github/workflows/market-report.yml` chạy lúc 06:05 và 17:05 giờ VN, tạo báo cáo rồi **giữ lại tới đúng 07:00 / 18:00** mới gửi, sau đó commit báo cáo vào `reports/`.
@@ -90,10 +91,8 @@ Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `MARKET_AGENTS_PROVIDER` | tự chọn | `openrouter`, `gemini` hoặc `claude` |
-| `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` | Model trên OpenRouter |
+| `MARKET_AGENTS_PROVIDER` | tự chọn | `groq`, `gemini` hoặc `claude` |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | Model Groq (dự phòng: `qwen/qwen3.8-27b`, `openai/gpt-oss-20b` qua `GROQ_FALLBACK_MODELS`) |
-| `OPENROUTER_FALLBACK_MODELS` | `nvidia/nemotron-3-ultra-550b-a55b:free,nvidia/nemotron-3.5-super-vl:free` | Model dự phòng, cách nhau dấu phẩy |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |
