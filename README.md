@@ -30,6 +30,8 @@
 
 **Skill tài chính** nằm ở `market_agents/skills/financial_analysis.md` (kênh truyền dẫn, thang điểm, động lực từng tài sản). Sửa file này để thay đổi cách agent phân tích — không cần sửa code.
 
+**Dữ liệu miễn phí:** trước khi các agent làm việc, `market_agents/datafeeds.py` tự lấy giá (Yahoo Finance) và tin RSS (CNBC, Investing.com, FXStreet, CoinDesk, Cointelegraph, OilPrice, Fed, VnExpress, CafeF) rồi đưa cho Agent Thu thập. Nhờ vậy hệ thống vẫn chạy khi gói AI miễn phí không cho dùng tìm kiếm web. Thêm/bớt nguồn bằng cách sửa danh sách `PRICE_SYMBOLS` và `NEWS_FEEDS`.
+
 Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đưa cho agent Phân tích làm bối cảnh, để báo cáo theo dõi được **diễn biến** qua các phiên.
 
 ## Cấu trúc báo cáo
@@ -47,7 +49,7 @@ Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đ
 
 Chỉ cần điền **một** key. Nếu chỉ có `GEMINI_API_KEY`, hệ thống tự dùng Gemini. Muốn chỉ định rõ thì đặt `MARKET_AGENTS_PROVIDER=gemini` hoặc `claude`.
 
-Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Khi bị giới hạn tốc độ (lỗi 429), hệ thống tự chờ rồi thử lại. Hạn mức free thực tế của tài khoản xem trong AI Studio. Lưu ý: dữ liệu gửi qua gói miễn phí có thể được Google dùng để cải thiện sản phẩm.
+Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói miễn phí của các model Gemini 3.x có thể không cho dùng Google Search (luôn báo 429); khi đó hệ thống tự bỏ search và dựa vào dữ liệu miễn phí ở trên. Khi bị giới hạn tốc độ (lỗi 429), hệ thống tự chờ rồi thử lại. Hạn mức free thực tế của tài khoản xem trong AI Studio. Lưu ý: dữ liệu gửi qua gói miễn phí có thể được Google dùng để cải thiện sản phẩm.
 
 ## Cách 1 — Chạy tự động bằng GitHub Actions (khuyên dùng, không cần máy chủ)
 
@@ -90,6 +92,7 @@ Hoặc dùng cron (máy đặt giờ VN): `35 6,17 * * * cd /đường/dẫn && 
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |
+| `MARKET_AGENTS_DATAFEEDS` | `1` | `0` để tắt lấy giá/tin RSS miễn phí |
 | `MARKET_AGENTS_LEAD_MINUTES` | `25` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
 
 ## Chi phí ước tính

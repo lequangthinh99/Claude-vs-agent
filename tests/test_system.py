@@ -146,7 +146,7 @@ def test_refusal_raises():
 
 
 def test_run_saves_report(tmp_path, monkeypatch):
-    settings = Settings(reports_dir=tmp_path)
+    settings = Settings(reports_dir=tmp_path, use_datafeeds=False)
     (tmp_path / "2000-01-01-evening.md").write_text("KỲ TRƯỚC", encoding="utf-8")
     report = main_mod.run("morning", send=False, settings=settings, backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
     files = sorted(p.name for p in tmp_path.glob("*-morning.md"))

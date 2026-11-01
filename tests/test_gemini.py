@@ -103,6 +103,17 @@ def test_gemini_full_pipeline():
     assert fr.name == "assign_strategist" and fr.response == {"result": "NHẬN ĐỊNH"}
 
 
+def test_gemini_drops_search_when_quota_blocked():
+    q = lambda: errors.ClientError(429, {"error": {"code": 429, "message": "search quota", "status": "RESOURCE_EXHAUSTED"}})
+    client = FakeGenai({"X": [q(), q(), reply(t.Part(text="OK không search"))]})
+    sleeps = []
+    out = GeminiBackend(client, "m", sleep=sleeps.append).run(Agent(name="x", system="X", web_search=5), "hi")
+    assert out.text == "OK không search"
+    assert client.calls[0].config.tools[0].google_search is not None
+    assert client.calls[-1].config.tools is None
+    assert sleeps == [15.0]
+
+
 def test_gemini_tool_order_error_is_reported_to_manager():
     s = scripts()
     s[MGR].insert(0, reply(call("assign_strategist", "sớm")))

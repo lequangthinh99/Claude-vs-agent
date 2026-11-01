@@ -32,6 +32,9 @@ class Settings:
     timezone: ZoneInfo = field(
         default_factory=lambda: ZoneInfo(os.getenv("MARKET_AGENTS_TIMEZONE", "Asia/Ho_Chi_Minh"))
     )
+    use_datafeeds: bool = field(
+        default_factory=lambda: os.getenv("MARKET_AGENTS_DATAFEEDS", "1").strip() not in ("0", "false", "")
+    )
     reports_dir: Path = field(
         default_factory=lambda: Path(os.getenv("MARKET_AGENTS_REPORTS_DIR", ROOT / "reports"))
     )

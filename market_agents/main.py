@@ -13,6 +13,7 @@ import sys
 import time
 from datetime import datetime
 
+from . import datafeeds
 from .backends import make_backend
 from .config import Settings
 from .delivery import deliver, latest_previous_report, save_report
@@ -40,7 +41,12 @@ def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
     kind = session_kind or detect_session(now)
     filename = f"{now:%Y-%m-%d}-{kind}.md"
 
-    session = Session(kind=kind, now=now, previous_report=latest_previous_report(settings, filename))
+    market_data = None
+    if settings.use_datafeeds:
+        log.info("Đang lấy giá và tin RSS miễn phí...")
+        market_data = datafeeds.collect(now)
+    session = Session(kind=kind, now=now, previous_report=latest_previous_report(settings, filename),
+                      market_data=market_data)
     backend = backend or make_backend(settings)
     log.info("Nhà cung cấp AI: %s (model %s)", settings.provider, backend.model)
     manager = ManagerAgent(backend)

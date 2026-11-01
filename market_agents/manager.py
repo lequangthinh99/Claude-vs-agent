@@ -63,6 +63,7 @@ class Session:
     kind: str  # "morning" | "evening"
     now: datetime
     previous_report: str | None = None
+    market_data: str | None = None  # giá + tin RSS lấy miễn phí bằng code
 
     @property
     def label(self) -> str:
@@ -117,8 +118,10 @@ class ManagerAgent:
         ws = Workspace()
 
         def assign_collector(data: dict) -> str:
+            feed = session.market_data or "(Không có dữ liệu tự động.)"
             prompt = (
                 f"{session.context()}\n\n"
+                f"<du_lieu_tu_dong>\n{feed}\n</du_lieu_tu_dong>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
             ws.collector = self._run_worker(self.collector, prompt, ws)
