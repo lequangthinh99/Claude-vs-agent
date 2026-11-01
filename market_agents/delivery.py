@@ -1,15 +1,19 @@
 """Gửi báo cáo: lưu file, Telegram, Email."""
 from __future__ import annotations
 
+import html
 import json
 import logging
 import smtplib
 import ssl
+import re
+import urllib.error
 import urllib.request
 from email.message import EmailMessage
 from pathlib import Path
 
 from .config import Settings
+from .telegram_format import DIVIDER, to_telegram_html
 
 log = logging.getLogger(__name__)
 
@@ -51,23 +55,64 @@ def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
     return chunks
 
 
-def send_telegram(settings: Settings, report: str) -> bool:
+def pack_sections(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
+    """Gom các phần (bắt đầu bằng đường kẻ) vào tin nhắn ≤ limit, ưu tiên không cắt giữa một phần."""
+    sections: list[str] = []
+    current: list[str] = []
+    for line in text.split("\n"):
+        if line == DIVIDER and current:
+            sections.append("\n".join(current))
+            current = []
+        current.append(line)
+    if current:
+        sections.append("\n".join(current))
+    chunks: list[str] = []
+    buf = ""
+    for sec in sections:
+        candidate = f"{buf}\n\n{sec}" if buf else sec
+        if len(candidate) <= limit:
+            buf = candidate
+            continue
+        if buf:
+            chunks.append(buf)
+        if len(sec) <= limit:
+            buf = sec
+        else:  # một phần quá dài: cắt theo dòng
+            pieces = split_message(sec, limit)
+            chunks.extend(p.rstrip("\n") for p in pieces[:-1])
+            buf = pieces[-1].rstrip("\n")
+    if buf.strip():
+        chunks.append(buf)
+    return chunks
+
+
+def _telegram_post(url: str, payload: dict) -> None:
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"Telegram trả về HTTP {resp.status}")
+
+
+def send_telegram(settings: Settings, report: str, post=_telegram_post) -> bool:
     if not (settings.telegram_bot_token and settings.telegram_chat_id):
         return False
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
-    parts = split_message(report)
+    parts = pack_sections(to_telegram_html(report))
     for i, part in enumerate(parts, 1):
-        body = json.dumps(
-            {
-                "chat_id": settings.telegram_chat_id,
-                "text": part if len(parts) == 1 else f"({i}/{len(parts)})\n{part}",
-                "disable_web_page_preview": True,
-            }
-        ).encode()
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Telegram trả về HTTP {resp.status}")
+        text = part if len(parts) == 1 else f"<i>Phần {i}/{len(parts)}</i>\n{part}"
+        payload = {"chat_id": settings.telegram_chat_id, "text": text,
+                   "parse_mode": "HTML", "disable_web_page_preview": True}
+        try:
+            post(url, payload)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 400:
+                raise
+            # Telegram không đọc được định dạng: gửi lại dạng chữ thường
+            log.warning("Telegram từ chối HTML (phần %d), gửi lại dạng chữ thường", i)
+            plain = html.unescape(re.sub(r"<[^>]+>", "", text))
+            post(url, {"chat_id": settings.telegram_chat_id, "text": plain,
+                       "disable_web_page_preview": True})
     log.info("Đã gửi Telegram (%d phần)", len(parts))
     return True
 

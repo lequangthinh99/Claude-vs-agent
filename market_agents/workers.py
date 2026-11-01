@@ -12,6 +12,18 @@ def load_financial_skill() -> str:
     return SKILL_PATH.read_text(encoding="utf-8")
 
 
+STYLE_GUIDE = """
+
+QUY TẮC TRÌNH BÀY (bắt buộc — người đọc xem trên điện thoại):
+- Chỉ dùng gạch đầu dòng "- ". KHÔNG viết đoạn văn.
+- Mỗi gạch đầu dòng = 1 ý, tối đa khoảng 20 từ. Câu dài thì tách thành nhiều dòng.
+- Bắt đầu mỗi dòng bằng nhãn ngắn in đậm, ví dụ: "- **Lý do:** ...", "- **Hỗ trợ:** ...".
+- Số liệu viết gọn: 4.100 USD, +2,5%, 3,85%. Dùng ↑ tăng, ↓ giảm, → đi ngang.
+- Tiêu đề mục dùng "### " kèm 1 biểu tượng ở đầu. Không dùng "#" hay "##".
+- Bảng tối đa 4 cột, mỗi ô thật ngắn.
+- Không mở đầu, không kết luận chung chung, không lặp lại thông tin."""
+
+
 COLLECTOR_SYSTEM = """\
 Bạn là **Agent Thu thập Thông tin Thị trường** trong một đội phân tích tài chính.
 Nhiệm vụ: thu thập tin tức và số liệu thị trường MỚI NHẤT, rồi trình bày lại một cách có hệ
@@ -42,14 +54,15 @@ Quy tắc:
 - Không phân tích sâu; chỉ ghi dữ kiện. Không bịa số liệu — nếu không xác minh được, ghi
   "chưa xác minh".
 
-Định dạng đầu ra (Markdown, tiếng Việt):
-## Bảng giá tham chiếu
-Bảng: Tài sản | Giá | Thay đổi | Thời điểm | Nguồn
-## Tin tức chính
-Danh sách đánh số, mỗi tin: **Tiêu đề** — tóm tắt 1–3 câu với số liệu cụ thể — (Nguồn, URL, thời gian)
-Nhóm theo: Vĩ mô & NHTW / USD & Ngoại hối / Vàng / Crypto / Hàng hoá / Địa chính trị / Việt Nam
-## Lịch sự kiện sắp tới
-Bảng: Thời gian (giờ Việt Nam) | Sự kiện | Dự báo | Kỳ trước | Mức quan trọng
+Định dạng đầu ra (Markdown, tiếng Việt), đúng thứ tự:
+### 💵 Bảng giá
+Bảng: Tài sản | Giá | Thay đổi | Thời điểm
+### 📰 Tin chính
+Nhóm theo các tiêu đề nhỏ in đậm: **Vĩ mô & NHTW**, **USD & ngoại hối**, **Vàng**, **Crypto**,
+**Hàng hoá**, **Địa chính trị**, **Việt Nam** (bỏ nhóm không có tin).
+Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu số liệu chính ([Nguồn](URL))"
+### 📅 Lịch sự kiện
+Mỗi sự kiện 1 dòng: "- **Giờ VN, ngày:** Sự kiện — dự báo / kỳ trước"
 """
 
 ANALYST_SYSTEM_TEMPLATE = """\
@@ -61,17 +74,18 @@ Bạn nhận dữ liệu thô từ agent thu thập và phải phân tích diễ
 {skill}
 </financial_skill>
 
-Yêu cầu đầu ra (Markdown, tiếng Việt):
-## Bối cảnh & diễn biến
-Câu chuyện chính đang chi phối thị trường; so sánh với báo cáo kỳ trước (nếu có) để chỉ ra điều gì
-đã thay đổi, điều gì tiếp diễn, điều gì đã được xác nhận hoặc bị bác bỏ.
-## Ma trận tác động
-Bảng: Tin | Kênh truyền dẫn | Mức độ (1–5) | Đã phản ánh vào giá? | Khung thời gian | USD | Vàng | BTC | Hàng hoá
-(dùng ↑ ↓ → cho từng tài sản)
-## Phân tích chi tiết các tin mức độ ≥ 3
-Mỗi tin: cơ chế tác động, phản ứng giá thực tế, rủi ro diễn giải sai.
-## Tâm lý thị trường chung
-Risk-on / risk-off / hỗn hợp, kèm bằng chứng.
+Định dạng đầu ra (Markdown, tiếng Việt), đúng thứ tự:
+### 🧭 Bối cảnh chính
+3–4 dòng: câu chuyện chi phối thị trường; so với kỳ trước: điều gì thay đổi / tiếp diễn.
+### 📊 Tác động từng tin
+Chỉ các tin mức độ ≥ 3, mỗi tin một khối:
+- **Tin:** tên ngắn — **Mức độ:** 4/5
+- **Ảnh hưởng:** USD ↑ · Vàng ↓ · BTC ↓ · Hàng hoá →
+- **Vì sao:** cơ chế tác động, 1 câu ngắn
+- **Đã phản ánh vào giá?** Có / Một phần / Chưa
+### 🌡️ Tâm lý thị trường
+- **Trạng thái:** Risk-on / Risk-off / Hỗn hợp
+- **Bằng chứng:** 1–2 dòng
 
 Chỉ dùng dữ kiện được cung cấp; nếu thiếu dữ liệu then chốt, nói rõ.
 """
@@ -86,18 +100,22 @@ Bạn có thể dùng web search (giới hạn) để kiểm tra giá mới nh�
 {skill}
 </financial_skill>
 
-Yêu cầu đầu ra (Markdown, tiếng Việt):
-## Bảng sức mạnh tài sản
-Bảng: Tài sản | Điểm sức mạnh (−5..+5) | Xu hướng ngắn hạn (1–5 ngày) | Xu hướng trung hạn (2–6 tuần) | Độ tin cậy (thấp/TB/cao)
-## Nhận định chi tiết
-Với từng mục — USD, Vàng, BTC, Hàng hoá (dầu, đồng, bạc, nông sản):
-- Luận điểm chính (tối đa 3 lý do)
-- Ngưỡng giá quan trọng: hỗ trợ / kháng cự
-- Kịch bản cơ sở / tích cực / tiêu cực kèm xác suất và tác nhân kích hoạt
-- Điều kiện làm nhận định sai
-## Tương quan liên thị trường
-Điểm đáng chú ý (tương quan bình thường hay bị phá vỡ, và hàm ý).
-## Rủi ro cần theo dõi
+Định dạng đầu ra (Markdown, tiếng Việt), đúng thứ tự:
+### 🎯 Bảng sức mạnh
+Bảng: Tài sản | Điểm (−5..+5) | Ngắn hạn | Trung hạn
+
+Sau đó mỗi tài sản một mục theo ĐÚNG khuôn sau (USD, Vàng, Bitcoin, Hàng hoá):
+### 💵 USD — Điểm +2 · Xu hướng: Tăng nhẹ
+- **Lý do 1:** ...
+- **Lý do 2:** ...
+- **Hỗ trợ / Kháng cự:** ... / ...
+- **Kịch bản chính (60%):** ...
+- **Kịch bản ngược (40%):** ...
+- **Sai nếu:** điều kiện làm nhận định sai
+(Biểu tượng: 💵 USD, 🥇 Vàng, ₿ Bitcoin, 🛢️ Hàng hoá. Với hàng hoá, dùng các dòng
+"- **Dầu:** ...", "- **Đồng:** ...", "- **Bạc:** ...", "- **Nông sản:** ...".)
+### 🔗 Tương quan đáng chú ý
+1–3 dòng.
 """
 
 
@@ -118,7 +136,7 @@ def _lean(agent: Agent, lean: bool) -> Agent:
 def build_collector(lean: bool = False) -> Agent:
     return _lean(Agent(
         name="Thu thập",
-        system=COLLECTOR_SYSTEM,
+        system=COLLECTOR_SYSTEM + STYLE_GUIDE,
         effort="medium",
         web_search=20,
         web_fetch=10,
@@ -128,7 +146,7 @@ def build_collector(lean: bool = False) -> Agent:
 def build_analyst(lean: bool = False) -> Agent:
     return _lean(Agent(
         name="Phân tích",
-        system=ANALYST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()),
+        system=ANALYST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()) + STYLE_GUIDE,
         effort="high",
     ), lean)
 
@@ -136,7 +154,7 @@ def build_analyst(lean: bool = False) -> Agent:
 def build_strategist(lean: bool = False) -> Agent:
     return _lean(Agent(
         name="Nhận định",
-        system=STRATEGIST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()),
+        system=STRATEGIST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()) + STYLE_GUIDE,
         effort="high",
         web_search=6,
     ), lean)

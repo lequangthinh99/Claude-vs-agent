@@ -16,6 +16,13 @@ class GroqBackend(OpenRouterBackend):
     key_hint = "GROQ_API_KEY sai hoặc đã bị thu hồi"
     client_side_fallback = True
 
+    def _body(self, agent, messages):
+        body = super()._body(agent, messages)
+        # gpt-oss là model "suy luận": phần suy nghĩ ăn vào max_tokens và giới hạn token/phút.
+        if self.model.startswith("openai/gpt-oss"):
+            body["reasoning_effort"] = "low"
+        return body
+
     @classmethod
     def from_settings(cls, settings: Settings) -> "GroqBackend":
         if not settings.groq_api_key:

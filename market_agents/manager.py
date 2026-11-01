@@ -28,19 +28,23 @@ Quy trình:
   bổ sung cụ thể. Mỗi agent được giao lại tối đa 1 lần.
 - Khi đã đủ, viết BÁO CÁO CUỐI CÙNG làm câu trả lời của bạn (không gọi thêm tool).
 
-Báo cáo cuối (Markdown, tiếng Việt, súc tích, dễ đọc trên điện thoại) theo đúng cấu trúc:
+Báo cáo cuối (Markdown, tiếng Việt, đọc trên điện thoại) theo đúng cấu trúc và thứ tự:
 # {tiêu đề do người dùng cung cấp}
-## 1. Tóm tắt nhanh
-5–7 gạch đầu dòng quan trọng nhất.
-## 2. Bảng giá tham chiếu
-## 3. Tin tức chính & mức độ ảnh hưởng
-Các tin quan trọng nhất kèm mức độ (1–5) và tài sản bị ảnh hưởng; giữ nguồn.
-## 4. Phân tích diễn biến
-## 5. Nhận định: USD · Vàng · BTC · Hàng hoá
-Bảng sức mạnh, rồi nhận định ngắn gọn từng tài sản (xu hướng, ngưỡng giá, kịch bản chính).
-## 6. Lịch sự kiện cần theo dõi
-## 7. Rủi ro & lưu ý
+## 📌 Tóm tắt nhanh
+5–7 dòng, mỗi dòng 1 ý quan trọng nhất.
+## 🎯 Nhận định: USD · Vàng · BTC · Hàng hoá
+Bảng sức mạnh, rồi mỗi tài sản một mục "### <biểu tượng> Tên — Điểm · Xu hướng" với các dòng
+**Lý do**, **Hỗ trợ / Kháng cự**, **Kịch bản chính**, **Sai nếu**.
+## 📰 Tin chính & mức độ ảnh hưởng
+Mỗi tin 1 dòng: "- **Tin (Mức độ 4/5):** ảnh hưởng tới tài sản nào ([Nguồn](URL))"
+## 🔍 Diễn biến & tâm lý thị trường
+## 💵 Bảng giá
+## 📅 Lịch sự kiện
+## ⚠️ Rủi ro & lưu ý
 Kết thúc bằng dòng: _Báo cáo do hệ thống AI tạo, chỉ mang tính tham khảo, không phải khuyến nghị đầu tư._
+
+QUY TẮC TRÌNH BÀY: chỉ dùng gạch đầu dòng, mỗi dòng 1 ý, tối đa khoảng 20 từ, bắt đầu bằng nhãn
+in đậm; không viết đoạn văn; số liệu gọn (4.100 USD, +2,5%).
 
 Không bịa số liệu: chỉ dùng thông tin từ các agent nhân viên.
 """
@@ -51,10 +55,10 @@ MANAGER_LEAN_ADDENDUM = """
 
 CHẾ ĐỘ GỌN: kết quả tool bạn nhận được chỉ là phần đầu của báo cáo nhân viên (bản đầy đủ đã được lưu
 và sẽ tự động ghép vào báo cáo). Vì vậy câu trả lời cuối cùng của bạn CHỈ gồm 2 phần sau, tối đa 300 từ:
-## Tóm tắt nhanh
-5–7 gạch đầu dòng quan trọng nhất.
-## Rủi ro & lưu ý
-2–4 gạch đầu dòng.
+## 📌 Tóm tắt nhanh
+5–7 dòng, mỗi dòng 1 ý, tối đa khoảng 20 từ, bắt đầu bằng nhãn in đậm.
+## ⚠️ Rủi ro & lưu ý
+2–4 dòng ngắn.
 Không viết tiêu đề báo cáo và không lặp lại các phần khác."""
 LEAN_PREVIEW_CHARS = 700
 LEAN_PREVIOUS_REPORT_CHARS = 1500
@@ -181,7 +185,7 @@ class ManagerAgent:
             system=MANAGER_SYSTEM + (MANAGER_LEAN_ADDENDUM if self.lean else ""),
             effort="medium",
             max_turns=20,
-            max_tokens=800 if self.lean else 64000,
+            max_tokens=1500 if self.lean else 64000,
             custom_tools=[
                 CustomTool(
                     "assign_collector",
@@ -230,7 +234,7 @@ class ManagerAgent:
             writer = Agent(
                 name="Quản lý (tổng hợp)",
                 system=MANAGER_SYSTEM + (MANAGER_LEAN_ADDENDUM if self.lean else ""),
-                effort="medium", max_turns=3, max_tokens=800 if self.lean else 64000,
+                effort="medium", max_turns=3, max_tokens=1500 if self.lean else 64000,
             )
             final = self.backend.run(writer, (
                 f"{session.context()}\n\nTiêu đề báo cáo: {session.title}\n\n"
@@ -248,14 +252,23 @@ class ManagerAgent:
         """Chế độ thường: báo cáo do Quản lý viết. Chế độ gọn: ghép tóm tắt + các phần chi tiết."""
         if not self.lean:
             return manager_text
-        return "\n".join([
-            f"# {session.title}", "",
-            manager_text.strip(), "",
-            "## Nhận định: USD · Vàng · BTC · Hàng hoá", "", (ws.strategist or "").strip(), "",
-            "## Phân tích tác động", "", (ws.analyst or "").strip(), "",
-            "## Dữ liệu & tin chính", "", (ws.collector or "").strip(), "",
-            DISCLAIMER,
-        ])
+        summary, risks = manager_text.strip(), ""
+        for marker in ("## ⚠️", "## Rủi ro"):
+            if marker in summary:  # đưa phần rủi ro xuống cuối báo cáo
+                summary, rest = summary.split(marker, 1)
+                risks = marker + rest
+                break
+        parts = [f"# {session.title}", "", summary.strip(), ""]
+        for heading, body in (
+            ("## 🎯 Nhận định: USD · Vàng · BTC · Hàng hoá", ws.strategist),
+            ("## 🔍 Phân tích tác động", ws.analyst),
+            ("## 📰 Dữ liệu & tin chính", ws.collector),
+        ):
+            parts += [heading, "", (body or "").strip(), ""]
+        if risks:
+            parts += [risks.strip(), ""]
+        parts.append(DISCLAIMER)
+        return "\n".join(parts)
 
     def _run_worker(self, agent: Agent, prompt: str, ws: Workspace) -> str:
         ws.log.append(agent.name)

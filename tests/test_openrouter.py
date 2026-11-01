@@ -163,7 +163,7 @@ def test_lean_mode_keeps_manager_context_small_and_assembles_report():
     assert report.count("X" * 5000) == 3            # bản đầy đủ được ghép vào báo cáo
     last_mgr = [c for c in http.calls if MGR in c["messages"][0]["content"]][-1]
     assert len(json.dumps(last_mgr, ensure_ascii=False)) < 12000   # Quản lý chỉ thấy bản rút gọn
-    assert last_mgr["max_tokens"] == 800
+    assert last_mgr["max_tokens"] == 1500
     ana = next(c for c in http.calls if ANA in c["messages"][0]["content"])
     assert ana["max_tokens"] == 1200 and "P" * 1600 not in ana["messages"][1]["content"]
 
