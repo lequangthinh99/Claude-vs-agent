@@ -1,0 +1,60 @@
+name: Bản tin thị trường (07:00 & 18:00 giờ VN)
+
+on:
+  schedule:
+    # GitHub cron dùng giờ UTC. Việt Nam = UTC+7.
+    # Khởi động sớm ~25 phút để agent kịp làm việc, rồi giữ báo cáo tới đúng giờ mới gửi.
+    - cron: "35 23 * * *"   # 06:35 giờ VN -> gửi lúc 07:00
+    - cron: "35 10 * * *"   # 17:35 giờ VN -> gửi lúc 18:00
+  workflow_dispatch:
+    inputs:
+      session:
+        description: "Phiên (morning/evening). Để trống = tự chọn theo giờ VN"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: market-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Chạy hệ thống agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MARKET_AGENTS_MODEL: ${{ vars.MARKET_AGENTS_MODEL || 'claude-opus-5-5' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.session }}" ]; then ARGS="--session ${{ github.event.inputs.session }}"; fi
+          if [ "${{ github.event_name }}" = "schedule" ]; then ARGS="$ARGS --hold"; fi
+          python -m market_agents.main $ARGS > /dev/null
+
+      - name: Lưu báo cáo vào repo
+        run: |
+          git config user.name "market-agents-bot"
+          git config user.email "market-agents-bot@users.noreply.github.com"
+          git add reports/
+          git diff --cached --quiet || git commit -m "Báo cáo thị trường $(TZ=Asia/Ho_Chi_Minh date '+%Y-%m-%d %H:%M')"
+          git push
