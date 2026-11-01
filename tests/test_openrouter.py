@@ -127,3 +127,19 @@ def test_groq_backend_uses_groq_endpoint(monkeypatch):
     monkeypatch.setenv("GROQ_MODEL", "m1")
     assert Settings().provider == "groq"
     assert isinstance(make_backend(Settings()), GroqBackend)
+
+
+def test_groq_client_side_fallback():
+    from market_agents.backends.groq import GroqBackend
+
+    models = []
+
+    def post(url, headers, body, timeout):
+        models.append(body["model"])
+        if body["model"] == "big":
+            return 413, {"error": {"message": "Request too large"}}
+        return text("OK từ " + body["model"])
+
+    be = GroqBackend("k", "big", ["small"], post=post, sleep=lambda _: None)
+    assert be.run(Agent(name="x", system="X"), "hi").text == "OK từ small"
+    assert models == ["big", "small"]

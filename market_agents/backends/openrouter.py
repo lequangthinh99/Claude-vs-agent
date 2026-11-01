@@ -76,7 +76,7 @@ class OpenRouterBackend:
             ]
         return body
 
-    def _complete(self, agent: Agent, body: dict) -> dict:
+    def _complete_one(self, agent: Agent, body: dict) -> dict:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -115,6 +115,24 @@ class OpenRouterBackend:
                         agent.name, self.label, code, message[:200], delay, attempt, MAX_RETRIES)
             self._sleep(delay)
             delay = min(delay * 2, 120.0)
+        raise AssertionError("unreachable")
+
+    # OpenRouter tự chuyển model qua tham số `models`; các nhà cung cấp khác (Groq) thì
+    # backend tự thử model kế tiếp khi model hiện tại lỗi hẳn.
+    client_side_fallback = False
+
+    def _complete(self, agent: Agent, body: dict) -> dict:
+        if not self.client_side_fallback or not self.fallback_models:
+            return self._complete_one(agent, body)
+        candidates = [self.model, *self.fallback_models]
+        for i, model in enumerate(candidates):
+            try:
+                return self._complete_one(agent, {**body, "model": model})
+            except AgentError as exc:
+                if i == len(candidates) - 1:
+                    raise
+                log.warning("[%s] %s: model %s lỗi (%s) -> chuyển sang %s",
+                            agent.name, self.label, model, str(exc)[:200], candidates[i + 1])
         raise AssertionError("unreachable")
 
     def run(self, agent: Agent, prompt: str) -> AgentResult:

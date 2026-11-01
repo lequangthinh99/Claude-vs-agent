@@ -40,7 +40,11 @@ class Settings:
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
     gemini_api_key: str = field(default_factory=_gemini_key)
     groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
-    groq_model: str = field(default_factory=lambda: os.getenv("GROQ_MODEL", ""))
+    # Đã kiểm tra (check-models, 01/11/2026): 3 model dưới đây trả lời + gọi tool được trên Groq.
+    groq_model: str = field(default_factory=lambda: os.getenv("GROQ_MODEL", "") or "openai/gpt-oss-120b")
+    groq_fallback_models: list[str] = field(
+        default_factory=lambda: _list(os.getenv("GROQ_FALLBACK_MODELS", "") or "qwen/qwen3.8-27b,openai/gpt-oss-20b")
+    )
     openrouter_api_key: str = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
     openrouter_model: str = field(
         default_factory=lambda: os.getenv("OPENROUTER_MODEL", "") or "google/gemma-4-31b-it:free"

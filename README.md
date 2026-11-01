@@ -92,6 +92,7 @@ Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .
 |---|---|---|
 | `MARKET_AGENTS_PROVIDER` | tự chọn | `openrouter`, `gemini` hoặc `claude` |
 | `OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` | Model trên OpenRouter |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Model Groq (dự phòng: `qwen/qwen3.8-27b`, `openai/gpt-oss-20b` qua `GROQ_FALLBACK_MODELS`) |
 | `OPENROUTER_FALLBACK_MODELS` | `nvidia/nemotron-3-ultra-550b-a55b:free,nvidia/nemotron-3.5-super-vl:free` | Model dự phòng, cách nhau dấu phẩy |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |

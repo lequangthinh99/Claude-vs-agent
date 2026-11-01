@@ -14,11 +14,10 @@ class GroqBackend(OpenRouterBackend):
     label = "Groq"
     api_url = GROQ_API_URL
     key_hint = "GROQ_API_KEY sai hoặc đã bị thu hồi"
+    client_side_fallback = True
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "GroqBackend":
         if not settings.groq_api_key:
             raise AgentError("Thiếu GROQ_API_KEY (tạo tại console.groq.com/keys)")
-        if not settings.groq_model:
-            raise AgentError("Thiếu GROQ_MODEL (chạy chế độ check-models để chọn model)")
-        return cls(settings.groq_api_key, settings.groq_model)  # Groq không hỗ trợ danh sách model dự phòng
+        return cls(settings.groq_api_key, settings.groq_model, settings.groq_fallback_models)
