@@ -52,7 +52,6 @@ NEWS_FEEDS: list[tuple[str, str]] = [
     ("Investing.com Economy", "https://www.investing.com/rss/news_14.rss"),
     ("Investing.com Forex", "https://www.investing.com/rss/news_1.rss"),
     ("Investing.com Commodities", "https://www.investing.com/rss/news_11.rss"),
-    ("FXStreet", "https://www.fxstreet.com/rss/news"),
     ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     ("Cointelegraph", "https://cointelegraph.com/rss"),
     ("OilPrice", "https://oilprice.com/rss/main"),

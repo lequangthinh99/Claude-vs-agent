@@ -112,6 +112,18 @@ def test_gemini_drops_search_when_quota_blocked():
     assert client.calls[0].config.tools[0].google_search is not None
     assert client.calls[-1].config.tools is None
     assert sleeps == [15.0]
+    assert client.calls[0].config.thinking_config.thinking_level.value == "LOW"
+
+
+def test_gemini_remembers_blocked_search_and_drops_unsupported_thinking():
+    q = errors.ClientError(429, {"error": {"code": 429, "message": "quota"}})
+    bad = errors.ClientError(400, {"error": {"code": 400, "message": "thinking_level is not supported"}})
+    client = FakeGenai({"X": [q, q, reply(t.Part(text="A")), bad, reply(t.Part(text="B"))]})
+    be = GeminiBackend(client, "m", sleep=lambda _: None)
+    assert be.run(Agent(name="x", system="X", web_search=5), "1").text == "A"
+    assert be.run(Agent(name="x", system="X", web_search=5), "2").text == "B"
+    assert client.calls[3].config.tools is None          # không thử search lại
+    assert client.calls[-1].config.thinking_config is None
 
 
 def test_gemini_tool_order_error_is_reported_to_manager():

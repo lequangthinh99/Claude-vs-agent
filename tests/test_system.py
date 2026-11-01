@@ -157,9 +157,9 @@ def test_detect_session_and_schedule():
     assert main_mod.detect_session(datetime(2026, 1, 1, 6, 35, tzinfo=VN)) == "morning"
     assert main_mod.detect_session(datetime(2026, 1, 1, 17, 35, tzinfo=VN)) == "evening"
     start, kind = next_run(datetime(2026, 1, 1, 8, 0, tzinfo=VN))
-    assert kind == "evening" and (start.hour, start.minute) == (17, 35)
+    assert kind == "evening" and (start.hour, start.minute) == (17, 5)
     start, kind = next_run(datetime(2026, 1, 1, 20, 0, tzinfo=VN))
-    assert kind == "morning" and start.day == 2 and (start.hour, start.minute) == (6, 35)
+    assert kind == "morning" and start.day == 2 and (start.hour, start.minute) == (6, 5)
 
 
 def test_split_message():

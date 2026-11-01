@@ -57,7 +57,7 @@ Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói mi
    - `GEMINI_API_KEY` (miễn phí, aistudio.google.com/apikey) **hoặc** `ANTHROPIC_API_KEY` (console.anthropic.com)
    - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - và/hoặc Email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_EMAIL_TO`
-2. Workflow `.github/workflows/market-report.yml` chạy lúc 06:35 và 17:35 giờ VN, tạo báo cáo rồi **giữ lại tới đúng 07:00 / 18:00** mới gửi, sau đó commit báo cáo vào `reports/`.
+2. Workflow `.github/workflows/market-report.yml` chạy lúc 06:05 và 17:05 giờ VN, tạo báo cáo rồi **giữ lại tới đúng 07:00 / 18:00** mới gửi, sau đó commit báo cáo vào `reports/`.
 3. Chạy thử ngay: tab **Actions → Bản tin thị trường → Run workflow**.
 
 > Lưu ý: GitHub chỉ chạy lịch (`schedule`) trên **nhánh mặc định** — cần merge code vào nhánh mặc định. GitHub đôi khi khởi động lịch trễ 5–15 phút vào giờ cao điểm; nếu muốn đúng giờ tuyệt đối, dùng Cách 2.
@@ -82,7 +82,7 @@ python -m market_agents.main --session morning    # chạy phiên sáng và gử
 python -m market_agents.scheduler                 # chạy nền: tự gửi 07:00 và 18:00 mỗi ngày
 ```
 
-Hoặc dùng cron (máy đặt giờ VN): `35 6,17 * * * cd /đường/dẫn && .venv/bin/python -m market_agents.main --hold`
+Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .venv/bin/python -m market_agents.main --hold`
 
 ## Cấu hình
 
@@ -93,7 +93,7 @@ Hoặc dùng cron (máy đặt giờ VN): `35 6,17 * * * cd /đường/dẫn && 
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |
 | `MARKET_AGENTS_DATAFEEDS` | `1` | `0` để tắt lấy giá/tin RSS miễn phí |
-| `MARKET_AGENTS_LEAD_MINUTES` | `25` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
+| `MARKET_AGENTS_LEAD_MINUTES` | `55` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
 
 ## Chi phí ước tính
 

@@ -2,7 +2,7 @@
 
     python -m market_agents.scheduler
 
-Bắt đầu tạo báo cáo sớm hơn giờ gửi (mặc định 25 phút) rồi giữ lại tới đúng 07:00 / 18:00 mới gửi.
+Bắt đầu tạo báo cáo sớm hơn giờ gửi (mặc định 55 phút) rồi giữ lại tới đúng 07:00 / 18:00 mới gửi.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from .main import run
 log = logging.getLogger(__name__)
 
 DELIVERY_TIMES = {"morning": (7, 0), "evening": (18, 0)}
-LEAD_MINUTES = int(os.getenv("MARKET_AGENTS_LEAD_MINUTES", "25"))
+LEAD_MINUTES = int(os.getenv("MARKET_AGENTS_LEAD_MINUTES", "55"))
 
 
 def next_run(now: datetime) -> tuple[datetime, str]:

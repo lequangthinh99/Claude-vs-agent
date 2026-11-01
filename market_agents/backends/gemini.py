@@ -14,10 +14,13 @@ from ..llm import Agent, AgentError, AgentResult
 
 log = logging.getLogger(__name__)
 
-RETRY_STATUS = {429, 500, 503}
+RETRY_STATUS = {429, 500, 502, 503, 504}
 MAX_RETRIES = 6
 SEARCH_FALLBACK_AFTER = 2
 REQUEST_TIMEOUT_MS = 300_000  # 5 phút / request
+# Mức suy nghĩ của agent -> thinking_level của Gemini. Để thấp cho nhanh: gói miễn phí
+# mất 2–5 phút mỗi lượt ở mức mặc định.
+THINKING_LEVELS = {"low": "MINIMAL", "medium": "LOW", "high": "MEDIUM", "xhigh": "HIGH", "max": "HIGH"}
 
 
 class GeminiBackend:
@@ -25,6 +28,8 @@ class GeminiBackend:
         self.client = client
         self.model = model
         self._sleep = sleep
+        self.search_blocked = False   # nhớ lại khi Google Search bị từ chối, đỡ phí lượt thử
+        self.thinking_supported = True
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "GeminiBackend":
@@ -50,7 +55,7 @@ class GeminiBackend:
                 )
                 for t in agent.custom_tools
             ]))
-        elif agent.web_search:
+        elif agent.web_search and not self.search_blocked:
             # Gemini Flash không cho kết hợp Google Search với function calling trong cùng request;
             # agent quản lý chỉ dùng function calling, các agent nhân viên chỉ dùng search.
             tools.append(types.Tool(google_search=types.GoogleSearch()))
@@ -59,6 +64,10 @@ class GeminiBackend:
             tools=tools or None,
             max_output_tokens=min(agent.max_tokens, 65536),
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            thinking_config=(
+                types.ThinkingConfig(thinking_level=THINKING_LEVELS.get(agent.effort, "LOW"))
+                if self.thinking_supported else None
+            ),
         )
 
     @staticmethod
@@ -89,8 +98,14 @@ class GeminiBackend:
                     if search_429 >= SEARCH_FALLBACK_AFTER:
                         log.warning("[%s] Google Search bị giới hạn (%s) — tiếp tục KHÔNG dùng search.",
                                     agent.name, message[:300])
+                        self.search_blocked = True
                         config = config.model_copy(update={"tools": None})
                         continue
+                if exc.code == 400 and config.thinking_config is not None and "think" in message.lower():
+                    log.warning("[%s] Model không hỗ trợ thinking_level, bỏ cấu hình này.", agent.name)
+                    self.thinking_supported = False
+                    config = config.model_copy(update={"thinking_config": None})
+                    continue
                 if exc.code not in RETRY_STATUS or attempt == MAX_RETRIES:
                     raise AgentError(f"[{agent.name}] Gemini lỗi {exc.code}: {message}") from exc
                 log.warning("[%s] Gemini %s (%s), chờ %.0fs rồi thử lại (%d/%d)",

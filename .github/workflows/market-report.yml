@@ -3,9 +3,9 @@ name: Bản tin thị trường (07:00 & 18:00 giờ VN)
 on:
   schedule:
     # GitHub cron dùng giờ UTC. Việt Nam = UTC+7.
-    # Khởi động sớm ~25 phút để agent kịp làm việc, rồi giữ báo cáo tới đúng giờ mới gửi.
-    - cron: "35 23 * * *"   # 06:35 giờ VN -> gửi lúc 07:00
-    - cron: "35 10 * * *"   # 17:35 giờ VN -> gửi lúc 18:00
+    # Khởi động sớm ~55 phút (gói Gemini miễn phí khá chậm), rồi giữ báo cáo tới đúng giờ mới gửi.
+    - cron: "5 23 * * *"    # 06:05 giờ VN -> gửi lúc 07:00
+    - cron: "5 10 * * *"    # 17:05 giờ VN -> gửi lúc 18:00
   workflow_dispatch:
     inputs:
       session:
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
