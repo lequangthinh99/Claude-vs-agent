@@ -36,7 +36,11 @@ jobs:
 
       - name: Chạy hệ thống agent
         env:
-          # Chỉ cần MỘT trong hai key. Có GEMINI_API_KEY mà không có ANTHROPIC_API_KEY -> dùng Gemini.
+          # Chỉ cần MỘT key. Tự chọn theo thứ tự: Claude > OpenRouter > Gemini
+          # (hoặc đặt biến MARKET_AGENTS_PROVIDER trong Settings -> Variables).
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_FALLBACK_MODELS: ${{ vars.OPENROUTER_FALLBACK_MODELS }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

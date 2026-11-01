@@ -188,11 +188,32 @@ class ManagerAgent:
             "Hãy điều phối đội ngũ và hoàn thành báo cáo cho phiên này."
         )
         result = self.backend.run(manager, prompt)
+        if ws.collector and ws.analyst and ws.strategist:
+            return result.text
 
-        if not (ws.collector and ws.analyst and ws.strategist):
-            log.warning("Agent quản lý kết thúc khi chưa đủ 3 bước; ghép báo cáo dự phòng.")
+        # Một số model không gọi tool đầy đủ: tự chạy các bước còn thiếu theo thứ tự,
+        # rồi nhờ Agent Quản lý (không có tool) viết báo cáo tổng hợp.
+        log.warning("Agent quản lý chưa giao đủ 3 việc; chạy quy trình cố định cho các bước còn thiếu.")
+        default = {"instructions": "Thực hiện đầy đủ nhiệm vụ của bạn cho phiên này."}
+        try:
+            if not ws.collector:
+                assign_collector(default)
+            if not ws.analyst:
+                assign_analyst(default)
+            if not ws.strategist:
+                assign_strategist(default)
+            writer = Agent(name="Quản lý (tổng hợp)", system=MANAGER_SYSTEM, effort="medium", max_turns=3)
+            final = self.backend.run(writer, (
+                f"{session.context()}\n\nTiêu đề báo cáo: {session.title}\n\n"
+                "Các agent nhân viên đã hoàn thành. Hãy viết BÁO CÁO CUỐI CÙNG từ kết quả dưới đây.\n\n"
+                f"<du_lieu_thu_thap>\n{ws.collector}\n</du_lieu_thu_thap>\n\n"
+                f"<phan_tich_tac_dong>\n{ws.analyst}\n</phan_tich_tac_dong>\n\n"
+                f"<nhan_dinh>\n{ws.strategist}\n</nhan_dinh>"
+            ))
+            return final.text
+        except AgentError:
+            log.exception("Quy trình cố định thất bại; ghép báo cáo dự phòng.")
             return self._fallback_report(session, ws, result.text)
-        return result.text
 
     def _run_worker(self, agent: Agent, prompt: str, ws: Workspace) -> str:
         ws.log.append(agent.name)

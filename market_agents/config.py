@@ -10,13 +10,21 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _default_provider() -> str:
-    """Tự chọn: Gemini nếu chỉ có GEMINI_API_KEY, ngược lại Claude."""
+    """Tự chọn theo key có sẵn: Claude > OpenRouter > Gemini (trừ khi chỉ định MARKET_AGENTS_PROVIDER)."""
     explicit = os.getenv("MARKET_AGENTS_PROVIDER", "").strip().lower()
     if explicit:
         return explicit
-    if _gemini_key() and not os.getenv("ANTHROPIC_API_KEY"):
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "claude"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
+    if _gemini_key():
         return "gemini"
     return "claude"
+
+
+def _list(value: str) -> list[str]:
+    return [v.strip() for v in value.split(",") if v.strip()]
 
 
 def _gemini_key() -> str:
@@ -29,6 +37,13 @@ class Settings:
     claude_model: str = field(default_factory=lambda: os.getenv("MARKET_AGENTS_MODEL", "claude-opus-5-5"))
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
     gemini_api_key: str = field(default_factory=_gemini_key)
+    openrouter_api_key: str = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
+    openrouter_model: str = field(
+        default_factory=lambda: os.getenv("OPENROUTER_MODEL", "") or "google/gemma-4-31b-it:free"
+    )
+    openrouter_fallback_models: list[str] = field(
+        default_factory=lambda: _list(os.getenv("OPENROUTER_FALLBACK_MODELS", ""))
+    )
     timezone: ZoneInfo = field(
         default_factory=lambda: ZoneInfo(os.getenv("MARKET_AGENTS_TIMEZONE", "Asia/Ho_Chi_Minh"))
     )

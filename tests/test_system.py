@@ -133,10 +133,22 @@ def test_out_of_order_assignment_returns_tool_error():
     assert err["is_error"] is True
 
 
-def test_fallback_report_when_manager_skips_steps():
-    scripts = {MGR: [msg("end_turn", text("xong"))]}
+def test_fixed_pipeline_when_manager_skips_tools():
+    scripts = manager_scripts()
+    scripts[MGR] = [msg("end_turn", text("tôi không dùng tool")), msg("end_turn", text("# TỔNG HỢP"))]
+    client = FakeClient(scripts)
+    report = ManagerAgent(ClaudeBackend(client, "m")).run(session())
+    assert report == "# TỔNG HỢP"
+    writer_call = [c for c in client.calls if MGR in c["system"]][-1]
+    assert "tools" not in writer_call and "NHẬN ĐỊNH" in writer_call["messages"][0]["content"]
+
+
+def test_fallback_report_when_fixed_pipeline_fails():
+    scripts = manager_scripts()
+    scripts[MGR] = [msg("end_turn", text("xong"))]
+    scripts[ANA] = [msg("refusal")]
     report = ManagerAgent(ClaudeBackend(FakeClient(scripts), "m")).run(session())
-    assert "Báo cáo ghép tự động" in report
+    assert "Báo cáo ghép tự động" in report and "DỮ LIỆU: vàng 4000" in report
 
 
 def test_refusal_raises():
