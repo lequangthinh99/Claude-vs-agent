@@ -84,6 +84,12 @@ class OpenRouterBackend:
                 return data
             code = (error or {}).get("code", status) if isinstance(error, dict) else status
             message = (error or {}).get("message", "") if isinstance(error, dict) else str(error)
+            meta = (error or {}).get("metadata") if isinstance(error, dict) else None
+            if isinstance(meta, dict):  # chi tiết lỗi từ nhà cung cấp phía sau OpenRouter
+                detail = meta.get("raw") or meta.get("reasons") or ""
+                provider = meta.get("provider_name") or ""
+                if detail or provider:
+                    message = f"{message} [{provider}] {str(detail)[:300]}".strip()
             retryable = status in RETRY_STATUS or code in RETRY_STATUS or status == 0 or (
                 status == 200 and not data.get("choices"))
             if not retryable or attempt == MAX_RETRIES:
