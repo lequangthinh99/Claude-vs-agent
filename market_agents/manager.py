@@ -252,7 +252,7 @@ class ManagerAgent:
         """Chế độ thường: báo cáo do Quản lý viết. Chế độ gọn: ghép tóm tắt + các phần chi tiết."""
         if not self.lean:
             return manager_text
-        summary, risks = manager_text.strip(), ""
+        summary, risks = manager_text.replace(DISCLAIMER, "").strip(), ""
         for marker in ("## ⚠️", "## Rủi ro"):
             if marker in summary:  # đưa phần rủi ro xuống cuối báo cáo
                 summary, rest = summary.split(marker, 1)

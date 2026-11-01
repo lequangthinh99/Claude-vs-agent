@@ -21,7 +21,9 @@ QUY TẮC TRÌNH BÀY (bắt buộc — người đọc xem trên điện thoạ
 - Số liệu viết gọn: 4.100 USD, +2,5%, 3,85%. Dùng ↑ tăng, ↓ giảm, → đi ngang.
 - Tiêu đề mục dùng "### " kèm 1 biểu tượng ở đầu. Không dùng "#" hay "##".
 - Bảng tối đa 4 cột, mỗi ô thật ngắn.
-- Không mở đầu, không kết luận chung chung, không lặp lại thông tin."""
+- Không mở đầu, không kết luận chung chung, không lặp lại thông tin.
+- Bỏ hẳn mục không có thông tin (không viết "không có dữ liệu" cho từng mục).
+- Chỉ chèn link khi có URL thật; không có URL thì chỉ ghi tên nguồn, ví dụ "(Yahoo Finance)"."""
 
 
 COLLECTOR_SYSTEM = """\
@@ -126,10 +128,10 @@ dùng gạch đầu dòng ngắn và bảng nhỏ. Không lặp lại dữ liệ
 LEAN_MAX_TOKENS = 1200
 
 
-def _lean(agent: Agent, lean: bool) -> Agent:
+def _lean(agent: Agent, lean: bool, max_tokens: int = LEAN_MAX_TOKENS) -> Agent:
     if lean:
         agent.system += LEAN_NOTE
-        agent.max_tokens = LEAN_MAX_TOKENS
+        agent.max_tokens = max_tokens
     return agent
 
 
@@ -140,7 +142,7 @@ def build_collector(lean: bool = False) -> Agent:
         effort="medium",
         web_search=20,
         web_fetch=10,
-    ), lean)
+    ), lean, max_tokens=1700)  # bảng giá + tin tức dài hơn các phần khác
 
 
 def build_analyst(lean: bool = False) -> Agent:

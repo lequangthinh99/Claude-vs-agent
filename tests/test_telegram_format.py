@@ -6,7 +6,7 @@ REPORT = """# Bản tin sáng 07:00 — ngày 02/11/2026
 
 ## 📌 Tóm tắt nhanh
 - **USD:** mạnh lên sau CPI <cao> & bất ngờ
-- **Vàng:** giảm nhẹ, giữ trên 4.000 USD ([Kitco](https://kitco.com/a?x=1&y=2))
+- **Vàng:** giảm nhẹ, giữ trên 4.000 USD ([Kitco](https://kitco.com/a?x=1&y=2)) ([Yahoo Finance](#))
 
 ## 🎯 Nhận định
 ### 🎯 Bảng sức mạnh
@@ -29,7 +29,7 @@ def test_markdown_to_telegram_html():
     assert out.startswith("<b>BẢN TIN SÁNG 07:00 — NGÀY 02/11/2026</b>")
     assert f"{DIVIDER}\n<b>📌 Tóm tắt nhanh</b>" in out
     assert "• <b>USD:</b> mạnh lên sau CPI &lt;cao&gt; &amp; bất ngờ" in out
-    assert '<a href="https://kitco.com/a?x=1&amp;y=2">Kitco</a>' in out
+    assert '<a href="https://kitco.com/a?x=1&amp;y=2">Kitco</a>) (Yahoo Finance)' in out
     assert "• <b>USD</b> — Điểm: +2 · Ngắn hạn: ↑ · Trung hạn: →" in out
     assert "• <b>Vàng</b> — Điểm: -1 · Ngắn hạn: ↓" in out      # ô "—" bị bỏ
     assert "   ◦ chi tiết phụ" in out and "\n-\n" not in out and "<b><b>" not in out

@@ -14,6 +14,7 @@ import re
 DIVIDER = "━━━━━━━━━━━━━━"
 
 _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
+_FAKE_LINK = re.compile(r"\[([^\]]+)\]\((?!https?://)[^)]*\)")
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _ITALIC = re.compile(r"(?<![\w*])[_*](?![_*\s])(.+?)(?<![\s_*])[_*](?![\w*])")
 _CODE = re.compile(r"`([^`]+)`")
@@ -23,6 +24,7 @@ def inline(text: str) -> str:
     text = html.escape(text, quote=False)
     text = _CODE.sub(r"<code>\1</code>", text)
     text = _LINK.sub(lambda m: f'<a href="{m.group(2).replace(chr(34), "%22")}">{m.group(1)}</a>', text)
+    text = _FAKE_LINK.sub(r"\1", text)  # [Nguồn](#) -> Nguồn
     text = _BOLD.sub(r"<b>\1</b>", text)
     text = _ITALIC.sub(r"<i>\1</i>", text)
     return text

@@ -141,12 +141,13 @@ def test_lean_mode_keeps_manager_context_small_and_assembles_report():
     s[COL] = [text("DỮ LIỆU " + long)]
     s[ANA] = [text("PHÂN TÍCH " + long)]
     s[STR] = [text("NHẬN ĐỊNH " + long)]
-    s[MGR][-1] = text("## Tóm tắt nhanh\n- ý chính")
+    s[MGR][-1] = text("## Tóm tắt nhanh\n- ý chính\n_Báo cáo do hệ thống AI tạo, chỉ mang tính tham khảo, không phải khuyến nghị đầu tư._")
     http = FakeHTTP(s)
     be = GroqBackend("k", "m", post=http, sleep=lambda _: None)
     sess = session()
     sess.previous_report = "P" * 9000
     report = ManagerAgent(be, lean=True).run(sess)
+    assert report.count("không phải khuyến nghị đầu tư") == 1
 
     assert report.startswith("# Bản tin sáng 07:00") and "- ý chính" in report
     assert report.count("X" * 5000) == 3            # bản đầy đủ được ghép vào báo cáo
