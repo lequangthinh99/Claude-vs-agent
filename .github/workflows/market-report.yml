@@ -12,6 +12,15 @@ on:
         description: "Phiên (morning/evening). Để trống = tự chọn theo giờ VN"
         required: false
         default: ""
+      mode:
+        description: "report = tạo bản tin; check-models = chỉ kiểm tra model (1 request/model)"
+        type: choice
+        options: [report, check-models]
+        default: report
+      models:
+        description: "(check-models) danh sách model cách nhau dấu cách; trống = model đang cấu hình"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -34,7 +43,16 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Kiểm tra model OpenRouter
+        if: github.event.inputs.mode == 'check-models'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_FALLBACK_MODELS: ${{ vars.OPENROUTER_FALLBACK_MODELS }}
+        run: python -m market_agents.check_models ${{ github.event.inputs.models }}
+
       - name: Chạy hệ thống agent
+        if: github.event.inputs.mode != 'check-models'
         env:
           # Chỉ cần MỘT key. Tự chọn theo thứ tự: Claude > OpenRouter > Gemini
           # (hoặc đặt biến MARKET_AGENTS_PROVIDER trong Settings -> Variables).
@@ -60,6 +78,7 @@ jobs:
           python -m market_agents.main $ARGS > /dev/null
 
       - name: Lưu báo cáo vào repo
+        if: github.event.inputs.mode != 'check-models'
         run: |
           git config user.name "market-agents-bot"
           git config user.email "market-agents-bot@users.noreply.github.com"
