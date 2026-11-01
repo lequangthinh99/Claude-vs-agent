@@ -65,7 +65,7 @@ class Agent:
     web_search: int = 0             # số lượt tìm web tối đa (0 = tắt)
     web_fetch: int = 0              # số lượt đọc trang web tối đa (chỉ Claude)
     custom_tools: list[CustomTool] = field(default_factory=list)
-    max_tokens: int = 64000
+    max_tokens: int = 64000  # với API kiểu OpenAI chỉ gửi khi <= 16000 (chế độ gọn)
     max_turns: int = 30
 
 

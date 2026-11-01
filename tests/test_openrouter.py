@@ -144,3 +144,43 @@ def test_groq_client_side_fallback():
     be = GroqBackend("k", "big", ["small"], post=post, sleep=lambda _: None)
     assert be.run(Agent(name="x", system="X"), "hi").text == "OK từ small"
     assert models == ["big", "small"]
+
+
+def test_lean_mode_keeps_manager_context_small_and_assembles_report():
+    long = "X" * 5000
+    s = scripts()
+    s[COL] = [text("DỮ LIỆU " + long)]
+    s[ANA] = [text("PHÂN TÍCH " + long)]
+    s[STR] = [text("NHẬN ĐỊNH " + long)]
+    s[MGR][-1] = text("## Tóm tắt nhanh\n- ý chính")
+    http = FakeHTTP(s)
+    be = OpenRouterBackend("k", "m", post=http, sleep=lambda _: None)
+    sess = session()
+    sess.previous_report = "P" * 9000
+    report = ManagerAgent(be, lean=True).run(sess)
+
+    assert report.startswith("# Bản tin sáng 07:00") and "- ý chính" in report
+    assert report.count("X" * 5000) == 3            # bản đầy đủ được ghép vào báo cáo
+    last_mgr = [c for c in http.calls if MGR in c["messages"][0]["content"]][-1]
+    assert len(json.dumps(last_mgr, ensure_ascii=False)) < 12000   # Quản lý chỉ thấy bản rút gọn
+    assert last_mgr["max_tokens"] == 800
+    ana = next(c for c in http.calls if ANA in c["messages"][0]["content"])
+    assert ana["max_tokens"] == 1200 and "P" * 1600 not in ana["messages"][1]["content"]
+
+
+def test_wait_uses_retry_hint():
+    sleeps = []
+    http = FakeHTTP({"X": [(429, {"error": {"code": "rate_limit_exceeded",
+                                            "message": "Please try again in 7.5s. Need more"}}), text("OK")]})
+    OpenRouterBackend("k", "m", post=http, sleep=sleeps.append).run(Agent(name="x", system="X"), "hi")
+    assert sleeps == [8.5]
+
+
+def test_lean_default_for_groq(monkeypatch):
+    monkeypatch.delenv("MARKET_AGENTS_LEAN", raising=False)
+    monkeypatch.setenv("MARKET_AGENTS_PROVIDER", "groq")
+    assert Settings().lean is True
+    monkeypatch.setenv("MARKET_AGENTS_PROVIDER", "openrouter")
+    assert Settings().lean is False
+    monkeypatch.setenv("MARKET_AGENTS_LEAN", "1")
+    assert Settings().lean is True

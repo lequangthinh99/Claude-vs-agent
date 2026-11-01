@@ -44,12 +44,14 @@ def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
     market_data = None
     if settings.use_datafeeds:
         log.info("Đang lấy giá và tin RSS miễn phí...")
-        market_data = datafeeds.collect(now)
+        market_data = (datafeeds.collect(now, max_items=4, summary_len=140) if settings.lean
+                       else datafeeds.collect(now))
     session = Session(kind=kind, now=now, previous_report=latest_previous_report(settings, filename),
                       market_data=market_data)
     backend = backend or make_backend(settings)
-    log.info("Nhà cung cấp AI: %s (model %s)", settings.provider, backend.model)
-    manager = ManagerAgent(backend)
+    log.info("Nhà cung cấp AI: %s (model %s)%s", settings.provider, backend.model,
+             " — chế độ gọn" if settings.lean else "")
+    manager = ManagerAgent(backend, lean=settings.lean)
     report = manager.run(session)
 
     save_report(settings, filename, report)

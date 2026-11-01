@@ -97,6 +97,7 @@ Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Model Gemini (vd. đổi sang bản Flash mới hơn nếu tài khoản có) |
 | `MARKET_AGENTS_MODEL` | `claude-opus-5-5` | Model Claude |
 | `MARKET_AGENTS_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ báo cáo |
+| `MARKET_AGENTS_LEAN` | bật khi dùng Groq | `1` = chế độ gọn: mỗi agent viết ngắn (~1.200 token), Quản lý chỉ đọc tóm tắt; hợp với API giới hạn token/phút thấp |
 | `MARKET_AGENTS_DATAFEEDS` | `1` | `0` để tắt lấy giá/tin RSS miễn phí |
 | `MARKET_AGENTS_LEAD_MINUTES` | `55` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
 

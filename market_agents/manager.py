@@ -45,6 +45,21 @@ Kết thúc bằng dòng: _Báo cáo do hệ thống AI tạo, chỉ mang tính 
 Không bịa số liệu: chỉ dùng thông tin từ các agent nhân viên.
 """
 
+# Chế độ gọn (cho API giới hạn token/phút thấp như Groq free): Quản lý chỉ thấy bản tóm tắt
+# kết quả của nhân viên và chỉ viết phần tóm tắt + rủi ro; các phần chi tiết được ghép tự động.
+MANAGER_LEAN_ADDENDUM = """
+
+CHẾ ĐỘ GỌN: kết quả tool bạn nhận được chỉ là phần đầu của báo cáo nhân viên (bản đầy đủ đã được lưu
+và sẽ tự động ghép vào báo cáo). Vì vậy câu trả lời cuối cùng của bạn CHỈ gồm 2 phần sau, tối đa 300 từ:
+## Tóm tắt nhanh
+5–7 gạch đầu dòng quan trọng nhất.
+## Rủi ro & lưu ý
+2–4 gạch đầu dòng.
+Không viết tiêu đề báo cáo và không lặp lại các phần khác."""
+LEAN_PREVIEW_CHARS = 700
+LEAN_PREVIOUS_REPORT_CHARS = 1500
+DISCLAIMER = "_Báo cáo do hệ thống AI tạo, chỉ mang tính tham khảo, không phải khuyến nghị đầu tư._"
+
 _INSTRUCTIONS_SCHEMA = {
     "type": "object",
     "properties": {
@@ -108,11 +123,18 @@ class Workspace:
 
 
 class ManagerAgent:
-    def __init__(self, backend: Backend):
+    def __init__(self, backend: Backend, lean: bool = False):
         self.backend = backend
-        self.collector = build_collector()
-        self.analyst = build_analyst()
-        self.strategist = build_strategist()
+        self.lean = lean
+        self.collector = build_collector(lean)
+        self.analyst = build_analyst(lean)
+        self.strategist = build_strategist(lean)
+
+    def _for_manager(self, text: str) -> str:
+        """Kết quả trả về cho Agent Quản lý (rút gọn ở chế độ gọn)."""
+        if not self.lean or len(text) <= LEAN_PREVIEW_CHARS:
+            return text
+        return text[:LEAN_PREVIEW_CHARS] + "\n…(phần còn lại đã được lưu và sẽ ghép vào báo cáo)"
 
     def run(self, session: Session) -> str:
         ws = Workspace()
@@ -125,12 +147,14 @@ class ManagerAgent:
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
             ws.collector = self._run_worker(self.collector, prompt, ws)
-            return ws.collector
+            return self._for_manager(ws.collector)
 
         def assign_analyst(data: dict) -> str:
             if not ws.collector:
                 raise AgentError("Chưa có dữ liệu thu thập. Hãy gọi assign_collector trước.")
             prev = session.previous_report or "(Không có báo cáo kỳ trước.)"
+            if self.lean and len(prev) > LEAN_PREVIOUS_REPORT_CHARS:
+                prev = prev[:LEAN_PREVIOUS_REPORT_CHARS] + "\n…(chỉ trích phần đầu)"
             prompt = (
                 f"{session.context()}\n\n"
                 f"<du_lieu_thu_thap>\n{ws.collector}\n</du_lieu_thu_thap>\n\n"
@@ -138,7 +162,7 @@ class ManagerAgent:
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
             ws.analyst = self._run_worker(self.analyst, prompt, ws)
-            return ws.analyst
+            return self._for_manager(ws.analyst)
 
         def assign_strategist(data: dict) -> str:
             if not ws.collector or not ws.analyst:
@@ -150,13 +174,14 @@ class ManagerAgent:
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
             ws.strategist = self._run_worker(self.strategist, prompt, ws)
-            return ws.strategist
+            return self._for_manager(ws.strategist)
 
         manager = Agent(
             name="Quản lý",
-            system=MANAGER_SYSTEM,
+            system=MANAGER_SYSTEM + (MANAGER_LEAN_ADDENDUM if self.lean else ""),
             effort="medium",
             max_turns=20,
+            max_tokens=800 if self.lean else 64000,
             custom_tools=[
                 CustomTool(
                     "assign_collector",
@@ -189,7 +214,7 @@ class ManagerAgent:
         )
         result = self.backend.run(manager, prompt)
         if ws.collector and ws.analyst and ws.strategist:
-            return result.text
+            return self._finish(session, ws, result.text)
 
         # Một số model không gọi tool đầy đủ: tự chạy các bước còn thiếu theo thứ tự,
         # rồi nhờ Agent Quản lý (không có tool) viết báo cáo tổng hợp.
@@ -202,18 +227,35 @@ class ManagerAgent:
                 assign_analyst(default)
             if not ws.strategist:
                 assign_strategist(default)
-            writer = Agent(name="Quản lý (tổng hợp)", system=MANAGER_SYSTEM, effort="medium", max_turns=3)
+            writer = Agent(
+                name="Quản lý (tổng hợp)",
+                system=MANAGER_SYSTEM + (MANAGER_LEAN_ADDENDUM if self.lean else ""),
+                effort="medium", max_turns=3, max_tokens=800 if self.lean else 64000,
+            )
             final = self.backend.run(writer, (
                 f"{session.context()}\n\nTiêu đề báo cáo: {session.title}\n\n"
                 "Các agent nhân viên đã hoàn thành. Hãy viết BÁO CÁO CUỐI CÙNG từ kết quả dưới đây.\n\n"
-                f"<du_lieu_thu_thap>\n{ws.collector}\n</du_lieu_thu_thap>\n\n"
-                f"<phan_tich_tac_dong>\n{ws.analyst}\n</phan_tich_tac_dong>\n\n"
-                f"<nhan_dinh>\n{ws.strategist}\n</nhan_dinh>"
+                f"<du_lieu_thu_thap>\n{self._for_manager(ws.collector)}\n</du_lieu_thu_thap>\n\n"
+                f"<phan_tich_tac_dong>\n{self._for_manager(ws.analyst)}\n</phan_tich_tac_dong>\n\n"
+                f"<nhan_dinh>\n{self._for_manager(ws.strategist)}\n</nhan_dinh>"
             ))
-            return final.text
+            return self._finish(session, ws, final.text)
         except AgentError:
             log.exception("Quy trình cố định thất bại; ghép báo cáo dự phòng.")
             return self._fallback_report(session, ws, result.text)
+
+    def _finish(self, session: Session, ws: Workspace, manager_text: str) -> str:
+        """Chế độ thường: báo cáo do Quản lý viết. Chế độ gọn: ghép tóm tắt + các phần chi tiết."""
+        if not self.lean:
+            return manager_text
+        return "\n".join([
+            f"# {session.title}", "",
+            manager_text.strip(), "",
+            "## Nhận định: USD · Vàng · BTC · Hàng hoá", "", (ws.strategist or "").strip(), "",
+            "## Phân tích tác động", "", (ws.analyst or "").strip(), "",
+            "## Dữ liệu & tin chính", "", (ws.collector or "").strip(), "",
+            DISCLAIMER,
+        ])
 
     def _run_worker(self, agent: Agent, prompt: str, ws: Workspace) -> str:
         ws.log.append(agent.name)

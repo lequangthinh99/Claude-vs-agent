@@ -101,28 +101,42 @@ Với từng mục — USD, Vàng, BTC, Hàng hoá (dầu, đồng, bạc, nông
 """
 
 
-def build_collector() -> Agent:
-    return Agent(
+LEAN_NOTE = """
+
+CHẾ ĐỘ GỌN (bắt buộc): toàn bộ câu trả lời tối đa khoảng 500 từ. Chỉ giữ thông tin quan trọng nhất,
+dùng gạch đầu dòng ngắn và bảng nhỏ. Không lặp lại dữ liệu đầu vào."""
+LEAN_MAX_TOKENS = 1200
+
+
+def _lean(agent: Agent, lean: bool) -> Agent:
+    if lean:
+        agent.system += LEAN_NOTE
+        agent.max_tokens = LEAN_MAX_TOKENS
+    return agent
+
+
+def build_collector(lean: bool = False) -> Agent:
+    return _lean(Agent(
         name="Thu thập",
         system=COLLECTOR_SYSTEM,
         effort="medium",
         web_search=20,
         web_fetch=10,
-    )
+    ), lean)
 
 
-def build_analyst() -> Agent:
-    return Agent(
+def build_analyst(lean: bool = False) -> Agent:
+    return _lean(Agent(
         name="Phân tích",
         system=ANALYST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()),
         effort="high",
-    )
+    ), lean)
 
 
-def build_strategist() -> Agent:
-    return Agent(
+def build_strategist(lean: bool = False) -> Agent:
+    return _lean(Agent(
         name="Nhận định",
         system=STRATEGIST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()),
         effort="high",
         web_search=6,
-    )
+    ), lean)

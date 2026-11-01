@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
@@ -65,6 +66,8 @@ class OpenRouterBackend:
 
     def _body(self, agent: Agent, messages: list[dict]) -> dict:
         body: dict[str, Any] = {"model": self.model, "messages": messages}
+        if agent.max_tokens <= 16000:
+            body["max_tokens"] = agent.max_tokens
         if self.fallback_models and not self.client_side_fallback:  # tham số riêng của OpenRouter
             body["models"] = [self.model, *self.fallback_models]
         if agent.custom_tools:
@@ -111,9 +114,13 @@ class OpenRouterBackend:
                 if status == 413:
                     hint = " (request vượt giới hạn token/phút của gói miễn phí)"
                 raise AgentError(f"[{agent.name}] {self.label} lỗi {status}/{code}: {message}{hint}")
+            wait = delay
+            hinted = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", message)
+            if hinted:  # Groq báo sẵn thời gian cần chờ
+                wait = min(int(hinted.group(1) or 0) * 60 + float(hinted.group(2)) + 1, 120.0)
             log.warning("[%s] %s %s (%s), chờ %.0fs rồi thử lại (%d/%d)",
-                        agent.name, self.label, code, message[:200], delay, attempt, MAX_RETRIES)
-            self._sleep(delay)
+                        agent.name, self.label, code, message[:200], wait, attempt, MAX_RETRIES)
+            self._sleep(wait)
             delay = min(delay * 2, 120.0)
         raise AssertionError("unreachable")
 

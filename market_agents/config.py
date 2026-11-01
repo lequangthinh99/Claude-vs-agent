@@ -35,6 +35,10 @@ def _gemini_key() -> str:
 
 @dataclass(frozen=True)
 class Settings:
+    @property
+    def lean(self) -> bool:
+        return self.lean_mode if self.lean_mode is not None else self.provider == "groq"
+
     provider: str = field(default_factory=_default_provider)
     claude_model: str = field(default_factory=lambda: os.getenv("MARKET_AGENTS_MODEL", "claude-opus-5-5"))
     gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
@@ -60,6 +64,10 @@ class Settings:
     use_datafeeds: bool = field(
         default_factory=lambda: os.getenv("MARKET_AGENTS_DATAFEEDS", "1").strip() not in ("0", "false", "")
     )
+    # Chế độ gọn: mặc định bật với Groq (giới hạn ~8.000 token/phút ở gói free).
+    lean_mode: bool | None = field(default_factory=lambda: {
+        "1": True, "true": True, "0": False, "false": False,
+    }.get(os.getenv("MARKET_AGENTS_LEAN", "").strip().lower()))
     reports_dir: Path = field(
         default_factory=lambda: Path(os.getenv("MARKET_AGENTS_REPORTS_DIR", ROOT / "reports"))
     )

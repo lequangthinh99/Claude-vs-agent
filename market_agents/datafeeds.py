@@ -185,14 +185,18 @@ def fetch_feed(source: str, url: str, since: datetime) -> list[NewsItem]:
 
 
 # ---------------------------------------------------------------- tổng hợp
-def collect(now: datetime, hours: int = 14) -> str:
+def collect(now: datetime, hours: int = 14, max_items: int = MAX_ITEMS_PER_FEED,
+            summary_len: int = 300) -> str:
     """Lấy giá + tin trong `hours` giờ gần nhất, trả về Markdown cho agent đọc."""
     since = now.astimezone(timezone.utc) - timedelta(hours=hours)
     with ThreadPoolExecutor(max_workers=12) as pool:
         quote_futs = [pool.submit(fetch_quote, n, s) for n, s in PRICE_SYMBOLS]
         news_futs = [pool.submit(fetch_feed, n, u, since) for n, u in NEWS_FEEDS]
         quotes = [q for f in quote_futs if (q := f.result())]
-        news = [i for f in news_futs for i in f.result()]
+        news = [i for f in news_futs for i in f.result()[:max_items]]
+    for item in news:
+        if len(item.summary) > summary_len:
+            item.summary = item.summary[: summary_len - 1] + "…"
     return render(quotes, news, now)
 
 
