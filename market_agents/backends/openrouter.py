@@ -24,9 +24,12 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 MAX_RETRIES = 6
 REQUEST_TIMEOUT = 300  # giây
+USER_AGENT = "market-agents/1.0 (+https://github.com/lequangthinh99/Claude-vs-agent)"
 
 
 def _http_post(url: str, headers: dict, body: dict, timeout: float) -> tuple[int, dict]:
+    # Một số API (vd. Groq qua Cloudflare) chặn User-Agent mặc định của urllib.
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json", **headers}
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -36,6 +39,8 @@ def _http_post(url: str, headers: dict, body: dict, timeout: float) -> tuple[int
             payload = json.loads(exc.read() or b"{}")
         except ValueError:
             payload = {}
+        if not payload:
+            payload = {"error": {"message": f"HTTP {exc.code} {exc.reason}"}}
         return exc.code, payload
 
 

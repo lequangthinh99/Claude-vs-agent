@@ -15,10 +15,11 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 
 from .backends.groq import GROQ_API_URL, GROQ_MODELS_URL
-from .backends.openrouter import API_URL, _http_post
+from .backends.openrouter import API_URL, USER_AGENT, _http_post
 from .config import Settings
 
 # Model Groq không phải dạng chat (âm thanh, lọc nội dung, ...) -> bỏ qua khi kiểm tra
@@ -41,9 +42,13 @@ PROMPT = "Hãy gọi tool `ping` với text = \"xin chào\". Không viết gì k
 
 
 def list_groq_models(api_key: str) -> list[str]:
-    req = urllib.request.Request(GROQ_MODELS_URL, headers={"Authorization": f"Bearer {api_key}"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read())
+    req = urllib.request.Request(GROQ_MODELS_URL, headers={
+        "Authorization": f"Bearer {api_key}", "User-Agent": USER_AGENT, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"Không lấy được danh sách model Groq: HTTP {exc.code} {exc.read()[:300]!r}")
     ids = sorted(m["id"] for m in data.get("data", []) if m.get("active", True))
     return [i for i in ids if not any(w in i.lower() for w in SKIP_WORDS)]
 
