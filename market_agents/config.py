@@ -43,7 +43,7 @@ class Settings:
     )
     openrouter_fallback_models: list[str] = field(
         default_factory=lambda: _list(
-            os.getenv("OPENROUTER_FALLBACK_MODELS", "") or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+            os.getenv("OPENROUTER_FALLBACK_MODELS", "") or "nvidia/nemotron-3-ultra-550b-a55b:free,nvidia/nemotron-3.5-super-vl:free"
         )
     )
     timezone: ZoneInfo = field(
