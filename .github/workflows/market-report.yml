@@ -3,9 +3,15 @@ name: Bản tin thị trường (07:00 & 18:00 giờ VN)
 on:
   schedule:
     # GitHub cron dùng giờ UTC. Việt Nam = UTC+7.
-    # Khởi động sớm ~55 phút (gói Gemini miễn phí khá chậm), rồi giữ báo cáo tới đúng giờ mới gửi.
-    - cron: "5 23 * * *"    # 06:05 giờ VN -> gửi lúc 07:00
-    - cron: "5 10 * * *"    # 17:05 giờ VN -> gửi lúc 18:00
+    # Lịch của GitHub đôi khi bị trễ hoặc bỏ qua, nên mỗi phiên có 3 lần thử cách nhau 30 phút.
+    # Lần nào thấy bản tin của phiên đã có trong reports/ thì tự bỏ qua (--skip-if-done).
+    # Bản tin tạo xong sớm được giữ lại tới đúng 07:00 / 18:00 mới gửi (--hold).
+    - cron: "5 23 * * *"    # 06:05 giờ VN (phiên sáng)
+    - cron: "35 23 * * *"   # 06:35 giờ VN (dự phòng)
+    - cron: "5 0 * * *"     # 07:05 giờ VN (dự phòng, gửi trễ)
+    - cron: "5 10 * * *"    # 17:05 giờ VN (phiên chiều)
+    - cron: "35 10 * * *"   # 17:35 giờ VN (dự phòng)
+    - cron: "5 11 * * *"    # 18:05 giờ VN (dự phòng, gửi trễ)
   workflow_dispatch:
     inputs:
       session:
@@ -78,7 +84,7 @@ jobs:
         run: |
           ARGS=""
           if [ -n "${{ github.event.inputs.session }}" ]; then ARGS="--session ${{ github.event.inputs.session }}"; fi
-          if [ "${{ github.event_name }}" = "schedule" ]; then ARGS="$ARGS --hold"; fi
+          if [ "${{ github.event_name }}" = "schedule" ]; then ARGS="$ARGS --hold --skip-if-done"; fi
           python -m market_agents.main $ARGS > /dev/null
 
       - name: Lưu báo cáo vào repo
@@ -88,4 +94,5 @@ jobs:
           git config user.email "market-agents-bot@users.noreply.github.com"
           git add reports/
           git diff --cached --quiet || git commit -m "Báo cáo thị trường $(TZ=Asia/Ho_Chi_Minh date '+%Y-%m-%d %H:%M')"
+          git pull --rebase -q origin "${GITHUB_REF_NAME}" || true
           git push

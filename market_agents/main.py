@@ -34,12 +34,23 @@ def seconds_until_slot(session: Session, now: datetime) -> float:
     return max(0.0, (target - now).total_seconds())
 
 
+def report_filename(now: datetime, kind: str) -> str:
+    return f"{now:%Y-%m-%d}-{kind}.md"
+
+
+def already_done(settings: Settings, session_kind: str | None = None) -> bool:
+    """Bản tin của phiên hôm nay đã được tạo (và lưu vào repo) chưa?"""
+    now = datetime.now(settings.timezone)
+    kind = session_kind or detect_session(now)
+    return (settings.reports_dir / report_filename(now, kind)).exists()
+
+
 def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
         settings: Settings | None = None, backend: Backend | None = None) -> str:
     settings = settings or Settings()
     now = datetime.now(settings.timezone)
     kind = session_kind or detect_session(now)
-    filename = f"{now:%Y-%m-%d}-{kind}.md"
+    filename = report_filename(now, kind)
 
     market_data = None
     if settings.use_datafeeds:
@@ -70,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--session", choices=["morning", "evening"], help="mặc định: tự chọn theo giờ")
     parser.add_argument("--no-send", action="store_true", help="không gửi Telegram/email")
     parser.add_argument("--hold", action="store_true", help="chờ tới đúng 07:00/18:00 rồi mới gửi")
+    parser.add_argument("--skip-if-done", action="store_true",
+                        help="bỏ qua nếu bản tin của phiên này hôm nay đã có (dùng cho các lần chạy dự phòng)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -77,6 +90,9 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.skip_if_done and already_done(Settings(), args.session):
+        logging.info("Bản tin của phiên này hôm nay đã được gửi — bỏ qua lần chạy dự phòng.")
+        return 0
     try:
         report = run(args.session, send=not args.no_send, hold=args.hold)
     except AgentError as exc:

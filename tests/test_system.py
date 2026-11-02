@@ -179,3 +179,12 @@ def test_split_message():
     parts = split_message(body, limit=1000)
     assert all(len(p) <= 1000 for p in parts)
     assert "".join(parts) == body
+
+
+def test_skip_if_done(tmp_path, monkeypatch):
+    settings = Settings(reports_dir=tmp_path, use_datafeeds=False)
+    assert not main_mod.already_done(settings, "morning")
+    now = datetime.now(settings.timezone)
+    (tmp_path / f"{now:%Y-%m-%d}-morning.md").write_text("x", encoding="utf-8")
+    assert main_mod.already_done(settings, "morning")
+    assert not main_mod.already_done(settings, "evening")
