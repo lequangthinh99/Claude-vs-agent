@@ -67,8 +67,8 @@ Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu số liệu chính ([N
 Lấy từ "Chỉ báo dòng tiền" và tin RSS. Ghi ngắn:
 - **Thế giới — tăng mạnh nhất (5 ngày):** 3 nhóm, kèm % và khối lượng so với TB20
 - **Thế giới — giảm mạnh nhất (5 ngày):** 3 nhóm, kèm % và khối lượng
-- **Việt Nam:** VN-Index/VN30/quỹ VNM (% và khối lượng); khối ngoại mua/bán ròng, thanh khoản,
-  nhóm ngành hút tiền — chỉ khi tin RSS có số liệu cụ thể
+- **Việt Nam:** quỹ VNM (% và khối lượng); VN-Index, khối ngoại mua/bán ròng, thanh khoản,
+  nhóm ngành hút tiền — lấy từ tin CafeF/Vietstock, chỉ khi tin có số liệu cụ thể
 ### 📅 Lịch sự kiện
 Mỗi sự kiện 1 dòng: "- **Giờ VN, ngày:** Sự kiện — dự báo / kỳ trước"
 """

@@ -63,8 +63,6 @@ FLOW_SYMBOLS: list[tuple[str, str, str]] = [
     ("Ngành năng lượng (XLE)", "XLE", "world"),
     ("Ngành phòng thủ - tiện ích (XLU)", "XLU", "world"),
     ("Quỹ ETF Việt Nam (VNM, niêm yết Mỹ)", "VNM", "vn"),
-    ("VN-Index", "^VNINDEX.VN", "vn"),
-    ("VN30", "^VN30.VN", "vn"),
 ]
 
 # (Tên nguồn, URL RSS/Atom). Nguồn lỗi sẽ được bỏ qua.
@@ -80,9 +78,9 @@ NEWS_FEEDS: list[tuple[str, str]] = [
     ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
     ("VnExpress Kinh doanh", "https://vnexpress.net/rss/kinh-doanh.rss"),
     ("CafeF Tài chính quốc tế", "https://cafef.vn/tai-chinh-quoc-te.rss"),
-    # Chứng khoán Việt Nam: khối ngoại, thanh khoản, nhóm ngành hút tiền
+    # Chứng khoán Việt Nam: VN-Index, khối ngoại, thanh khoản, nhóm ngành hút tiền
+    # (Yahoo không có VN-Index/VN30 nên lấy các số liệu này từ tin của CafeF, Vietstock)
     ("CafeF Chứng khoán", "https://cafef.vn/thi-truong-chung-khoan.rss"),
-    ("VnExpress Chứng khoán", "https://vnexpress.net/rss/kinh-doanh/chung-khoan.rss"),
     ("Vietstock Chứng khoán", "https://vietstock.vn/830/chung-khoan/co-phieu.rss"),
 ]
 MAX_ITEMS_PER_FEED = 10
