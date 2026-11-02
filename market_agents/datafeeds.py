@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -45,6 +46,27 @@ PRICE_SYMBOLS: list[tuple[str, str]] = [
     ("VIX", "^VIX"),
 ]
 
+# Chỉ báo dòng tiền (gián tiếp): quỹ ETF đại diện từng nhóm tài sản.
+# (Tên hiển thị, mã Yahoo Finance, khu vực)
+FLOW_SYMBOLS: list[tuple[str, str, str]] = [
+    ("Cổ phiếu Mỹ (SPY)", "SPY", "world"),
+    ("Công nghệ Mỹ (QQQ)", "QQQ", "world"),
+    ("Cổ phiếu châu Âu (VGK)", "VGK", "world"),
+    ("Thị trường mới nổi (EEM)", "EEM", "world"),
+    ("Trái phiếu Mỹ dài hạn (TLT)", "TLT", "world"),
+    ("Trái phiếu lợi suất cao (HYG)", "HYG", "world"),
+    ("Vàng (GLD)", "GLD", "world"),
+    ("Bitcoin ETF (IBIT)", "IBIT", "world"),
+    ("Dầu (USO)", "USO", "world"),
+    ("Ngành công nghệ (XLK)", "XLK", "world"),
+    ("Ngành tài chính (XLF)", "XLF", "world"),
+    ("Ngành năng lượng (XLE)", "XLE", "world"),
+    ("Ngành phòng thủ - tiện ích (XLU)", "XLU", "world"),
+    ("Quỹ ETF Việt Nam (VNM, niêm yết Mỹ)", "VNM", "vn"),
+    ("VN-Index", "^VNINDEX.VN", "vn"),
+    ("VN30", "^VN30.VN", "vn"),
+]
+
 # (Tên nguồn, URL RSS/Atom). Nguồn lỗi sẽ được bỏ qua.
 NEWS_FEEDS: list[tuple[str, str]] = [
     ("CNBC Economy", "https://www.cnbc.com/id/20910258/device/rss/rss.html"),
@@ -58,6 +80,10 @@ NEWS_FEEDS: list[tuple[str, str]] = [
     ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
     ("VnExpress Kinh doanh", "https://vnexpress.net/rss/kinh-doanh.rss"),
     ("CafeF Tài chính quốc tế", "https://cafef.vn/tai-chinh-quoc-te.rss"),
+    # Chứng khoán Việt Nam: khối ngoại, thanh khoản, nhóm ngành hút tiền
+    ("CafeF Chứng khoán", "https://cafef.vn/thi-truong-chung-khoan.rss"),
+    ("VnExpress Chứng khoán", "https://vnexpress.net/rss/kinh-doanh/chung-khoan.rss"),
+    ("Vietstock Chứng khoán", "https://vietstock.vn/830/chung-khoan/co-phieu.rss"),
 ]
 MAX_ITEMS_PER_FEED = 10
 
@@ -69,6 +95,16 @@ class Quote:
     price: float
     change_pct: float | None
     time: datetime | None
+
+
+@dataclass
+class FlowStat:
+    name: str
+    symbol: str
+    region: str  # "world" | "vn"
+    change_1d: float | None
+    change_5d: float | None
+    volume_ratio: float | None  # khối lượng phiên gần nhất / trung bình 20 phiên trước đó
 
 
 @dataclass
@@ -114,6 +150,36 @@ def fetch_quote(name: str, symbol: str) -> Quote | None:
         return parse_yahoo_chart(name, symbol, json.loads(_get(url)))
     except Exception as exc:  # noqa: BLE001 - nguồn miễn phí, lỗi thì bỏ qua
         log.warning("Không lấy được giá %s: %s", symbol, exc)
+        return None
+
+
+# ---------------------------------------------------------------- dòng tiền
+def parse_flow(name: str, symbol: str, region: str, payload: dict) -> FlowStat | None:
+    result = (payload.get("chart") or {}).get("result") or []
+    if not result:
+        return None
+    quote = ((result[0].get("indicators") or {}).get("quote") or [{}])[0]
+    pairs = [(c, v) for c, v in zip(quote.get("close") or [], quote.get("volume") or []) if c is not None]
+    if len(pairs) < 2:
+        return None
+    closes = [c for c, _ in pairs]
+    volumes = [v for _, v in pairs if v]
+    change_1d = (closes[-1] / closes[-2] - 1) * 100
+    change_5d = (closes[-1] / closes[-6] - 1) * 100 if len(closes) >= 6 else None
+    volume_ratio = None
+    if len(volumes) >= 6 and pairs[-1][1]:
+        base = volumes[-21:-1]
+        avg = sum(base) / len(base)
+        volume_ratio = pairs[-1][1] / avg if avg else None
+    return FlowStat(name, symbol, region, change_1d, change_5d, volume_ratio)
+
+
+def fetch_flow(name: str, symbol: str, region: str) -> FlowStat | None:
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.request.quote(symbol)}?range=2mo&interval=1d"
+    try:
+        return parse_flow(name, symbol, region, json.loads(_get(url)))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Không lấy được dữ liệu dòng tiền %s: %s", symbol, exc)
         return None
 
 
@@ -191,13 +257,15 @@ def collect(now: datetime, hours: int = 14, max_items: int = MAX_ITEMS_PER_FEED,
     since = now.astimezone(timezone.utc) - timedelta(hours=hours)
     with ThreadPoolExecutor(max_workers=12) as pool:
         quote_futs = [pool.submit(fetch_quote, n, s) for n, s in PRICE_SYMBOLS]
+        flow_futs = [pool.submit(fetch_flow, n, s, r) for n, s, r in FLOW_SYMBOLS]
         news_futs = [pool.submit(fetch_feed, n, u, since) for n, u in NEWS_FEEDS]
         quotes = [q for f in quote_futs if (q := f.result())]
+        flows = [x for f in flow_futs if (x := f.result())]
         news = [i for f in news_futs for i in f.result()[:max_items]]
     for item in news:
         if len(item.summary) > summary_len:
             item.summary = item.summary[: summary_len - 1] + "…"
-    return render(quotes, news, now)
+    return render(quotes, news, now, flows)
 
 
 def _fmt(price: float) -> str:
@@ -208,7 +276,29 @@ def _fmt(price: float) -> str:
     return f"{price:.6f}"
 
 
-def render(quotes: list[Quote], news: list[NewsItem], now: datetime) -> str:
+def _pct(value: float | None) -> str:
+    return f"{value:+.1f}%" if value is not None else "—"
+
+
+def render_flows(flows: list[FlowStat]) -> list[str]:
+    lines = ["", "### Chỉ báo dòng tiền (gián tiếp, qua quỹ ETF / chỉ số — Yahoo Finance)",
+             "Giá tăng kèm khối lượng cao hơn trung bình thường cho thấy tiền đang vào; giảm kèm "
+             "khối lượng cao: tiền đang rút. Đây KHÔNG phải số liệu dòng vốn thực."]
+    for region, title in (("world", "Thế giới"), ("vn", "Việt Nam")):
+        rows = [f for f in flows if f.region == region]
+        if not rows:
+            lines.append(f"- {title}: không lấy được dữ liệu.")
+            continue
+        rows.sort(key=lambda f: f.change_5d if f.change_5d is not None else -999, reverse=True)
+        lines += [f"**{title}** (xếp theo % 5 ngày)", "| Nhóm | 1 ngày | 5 ngày | KL / TB20 |", "|---|---|---|---|"]
+        for f in rows:
+            vol = f"{f.volume_ratio:.1f}x" if f.volume_ratio is not None else "—"
+            lines.append(f"| {f.name} | {_pct(f.change_1d)} | {_pct(f.change_5d)} | {vol} |")
+    return lines
+
+
+def render(quotes: list[Quote], news: list[NewsItem], now: datetime,
+           flows: list[FlowStat] | None = None) -> str:
     tz = now.tzinfo
     lines = [f"Dữ liệu tự động lấy lúc {now:%d/%m/%Y %H:%M} (giờ VN).", "", "### Giá thị trường (Yahoo Finance)"]
     if quotes:
@@ -219,6 +309,8 @@ def render(quotes: list[Quote], news: list[NewsItem], now: datetime) -> str:
             lines.append(f"| {q.name} | {_fmt(q.price)} | {change} | {when} |")
     else:
         lines.append("(Không lấy được dữ liệu giá.)")
+    if flows is not None:
+        lines += render_flows(flows)
     lines += ["", f"### Tin tức RSS ({len(news)} tin)"]
     for i in sorted(news, key=lambda i: i.published or now, reverse=True):
         when = i.published.astimezone(tz).strftime("%d/%m %H:%M") if i.published else "?"
@@ -226,3 +318,36 @@ def render(quotes: list[Quote], news: list[NewsItem], now: datetime) -> str:
     if not news:
         lines.append("(Không lấy được tin RSS.)")
     return "\n".join(lines)
+
+
+def check_sources() -> int:
+    """Kiểm tra từng nguồn dữ liệu miễn phí (không gọi AI). In bảng OK/LỖI."""
+    since = datetime.now(timezone.utc) - timedelta(hours=48)
+    rows: list[tuple[str, str, str]] = []
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        q = {pool.submit(fetch_quote, n, s): (n, s) for n, s in PRICE_SYMBOLS}
+        fl = {pool.submit(fetch_flow, n, s, r): (n, s) for n, s, r in FLOW_SYMBOLS}
+        nf = {pool.submit(fetch_feed, n, u, since): (n, u) for n, u in NEWS_FEEDS}
+        for fut, (n, s) in q.items():
+            rows.append(("Giá", f"{n} ({s})", "OK" if fut.result() else "LỖI"))
+        for fut, (n, s) in fl.items():
+            r = fut.result()
+            rows.append(("Dòng tiền", f"{n} ({s})",
+                         f"OK 5 ngày {_pct(r.change_5d)}, KL {r.volume_ratio or 0:.1f}x" if r else "LỖI"))
+        for fut, (n, u) in nf.items():
+            items = fut.result()
+            rows.append(("Tin RSS", n, f"OK {len(items)} tin/48h" if items else "LỖI hoặc không có tin"))
+    for kind, name, status in rows:
+        print(f"{status[:3]:4} {kind:10} {name}  {status}", flush=True)
+    lines = ["## Kiểm tra nguồn dữ liệu miễn phí", "", "| Loại | Nguồn | Kết quả |", "|---|---|---|"]
+    lines += [f"| {k} | {n} | {s} |" for k, n, s in rows]
+    summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(lines) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.WARNING)
+    raise SystemExit(check_sources())

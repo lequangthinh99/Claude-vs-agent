@@ -71,7 +71,24 @@ Mỗi điểm số phải kèm: lý do chính (tối đa 3), các ngưỡng giá
 Với mỗi tài sản, đưa ra 2–3 kịch bản (cơ sở / tích cực / tiêu cực) kèm xác suất ước lượng
 (tổng = 100%) và tác nhân kích hoạt.
 
-## 6. Nguyên tắc
+## 6. Đọc dòng tiền
+
+Không có số liệu dòng vốn thực theo thời gian thực miễn phí, nên dùng **chỉ báo gián tiếp**:
+- **Giá + khối lượng của quỹ ETF đại diện:** giá tăng kèm khối lượng > 1,3x trung bình 20 phiên →
+  tiền đang vào mạnh; giá giảm kèm khối lượng cao → tiền rút; khối lượng thấp → tín hiệu yếu.
+- **Xoay vòng rủi ro:**
+  - Risk-on: tiền vào cổ phiếu (QQQ, SPY), thị trường mới nổi (EEM), trái phiếu lợi suất cao (HYG), BTC.
+  - Risk-off: tiền vào trái phiếu dài hạn (TLT), vàng (GLD), USD, ngành phòng thủ (XLU).
+  - Lạm phát / chu kỳ hàng hoá: tiền vào năng lượng (XLE, USO), kim loại.
+- **Thị trường mới nổi & Việt Nam:**
+  - USD mạnh + lợi suất Mỹ tăng → vốn ngoại thường rút khỏi thị trường mới nổi (EEM giảm),
+    tỷ giá USD/VND chịu áp lực, khối ngoại dễ bán ròng trên HOSE.
+  - Khối ngoại bán ròng kéo dài + tỷ giá tăng: rủi ro cho cổ phiếu vốn hoá lớn (VN30).
+  - Thanh khoản HOSE tăng khi chỉ số tăng: dòng tiền nội (nhà đầu tư cá nhân) đang vào.
+  - Nhóm ngành hay dẫn dắt: ngân hàng, chứng khoán, bất động sản, thép, bán lẻ, dầu khí.
+- Luôn ghi rõ đây là chỉ báo gián tiếp; chỉ nêu số liệu khối ngoại khi có nguồn cụ thể.
+
+## 7. Nguyên tắc
 
 - Phân biệt rõ **dữ kiện** (có nguồn, có số liệu) và **nhận định** (suy luận của bạn).
 - Không bịa số liệu. Nếu không có số liệu cập nhật, nói rõ "chưa xác minh được".

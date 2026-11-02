@@ -155,7 +155,7 @@ def test_lean_mode_keeps_manager_context_small_and_assembles_report():
     assert len(json.dumps(last_mgr, ensure_ascii=False)) < 12000   # Quản lý chỉ thấy bản rút gọn
     assert last_mgr["max_tokens"] == 1500
     ana = next(c for c in http.calls if ANA in c["messages"][0]["content"])
-    assert ana["max_tokens"] == 1200 and "P" * 1600 not in ana["messages"][1]["content"]
+    assert ana["max_tokens"] == 1600 and "P" * 1600 not in ana["messages"][1]["content"]
 
 
 def test_wait_uses_retry_hint():
@@ -174,3 +174,18 @@ def test_lean_default_for_groq(monkeypatch):
     assert Settings().lean is False
     monkeypatch.setenv("MARKET_AGENTS_LEAN", "1")
     assert Settings().lean is True
+
+
+def test_flow_section_is_its_own_report_section():
+    from market_agents.manager import split_section
+
+    analyst = "### 🧭 Bối cảnh chính\n- a\n### 💸 Dòng tiền đang đổ vào đâu\n**Thế giới**\n- **Đang vào:** GLD\n### 🌡️ Tâm lý\n- b"
+    flows, rest = split_section(analyst, "### 💸")
+    assert flows == "**Thế giới**\n- **Đang vào:** GLD"
+    assert "💸" not in rest and "🧭" in rest and "🌡️" in rest
+
+    s = scripts()
+    s[ANA] = [text(analyst)]
+    http = FakeHTTP(s)
+    report = ManagerAgent(GroqBackend("k", "m", post=http, sleep=lambda _: None), lean=True).run(session())
+    assert report.index("## 🎯 Nhận định") < report.index("## 💸 Dòng tiền") < report.index("## 🔍 Phân tích")

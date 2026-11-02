@@ -35,6 +35,8 @@ Báo cáo cuối (Markdown, tiếng Việt, đọc trên điện thoại) theo �
 ## 🎯 Nhận định: USD · Vàng · BTC · Hàng hoá
 Bảng sức mạnh, rồi mỗi tài sản một mục "### <biểu tượng> Tên — Điểm · Xu hướng" với các dòng
 **Lý do**, **Hỗ trợ / Kháng cự**, **Kịch bản chính**, **Sai nếu**.
+## 💸 Dòng tiền: Thế giới · Việt Nam
+Thế giới: đang vào / đang rút / xu hướng xoay vòng. Việt Nam: khối ngoại, thanh khoản, ngành hút tiền.
 ## 📰 Tin chính & mức độ ảnh hưởng
 Mỗi tin 1 dòng: "- **Tin (Mức độ 4/5):** ảnh hưởng tới tài sản nào ([Nguồn](URL))"
 ## 🔍 Diễn biến & tâm lý thị trường
@@ -124,6 +126,21 @@ class Workspace:
     analyst: str | None = None
     strategist: str | None = None
     log: list[str] = field(default_factory=list)
+
+
+def split_section(text: str, marker: str) -> tuple[str, str]:
+    """Tách mục bắt đầu bằng `marker` (vd "### 💸") ra khỏi văn bản.
+
+    Trả về (nội dung mục, không kèm dòng tiêu đề; phần còn lại)."""
+    lines = text.split("\n")
+    start = next((i for i, l in enumerate(lines) if l.strip().startswith(marker)), None)
+    if start is None:
+        return "", text
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("### ") or lines[i].startswith("## ")), len(lines))
+    section = "\n".join(lines[start + 1:end]).strip()
+    rest = "\n".join(lines[:start] + lines[end:]).strip()
+    return section, rest
 
 
 class ManagerAgent:
@@ -258,13 +275,16 @@ class ManagerAgent:
                 summary, rest = summary.split(marker, 1)
                 risks = marker + rest
                 break
+        flows, analysis = split_section(ws.analyst or "", "### 💸")
         parts = [f"# {session.title}", "", summary.strip(), ""]
         for heading, body in (
             ("## 🎯 Nhận định: USD · Vàng · BTC · Hàng hoá", ws.strategist),
-            ("## 🔍 Phân tích tác động", ws.analyst),
+            ("## 💸 Dòng tiền: Thế giới · Việt Nam", flows),
+            ("## 🔍 Phân tích tác động", analysis),
             ("## 📰 Dữ liệu & tin chính", ws.collector),
         ):
-            parts += [heading, "", (body or "").strip(), ""]
+            if body and body.strip():
+                parts += [heading, "", body.strip(), ""]
         if risks:
             parts += [risks.strip(), ""]
         parts.append(DISCLAIMER)

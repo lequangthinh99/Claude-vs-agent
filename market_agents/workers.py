@@ -63,6 +63,12 @@ Bảng: Tài sản | Giá | Thay đổi | Thời điểm
 Nhóm theo các tiêu đề nhỏ in đậm: **Vĩ mô & NHTW**, **USD & ngoại hối**, **Vàng**, **Crypto**,
 **Hàng hoá**, **Địa chính trị**, **Việt Nam** (bỏ nhóm không có tin).
 Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu số liệu chính ([Nguồn](URL))"
+### 💸 Dữ liệu dòng tiền
+Lấy từ "Chỉ báo dòng tiền" và tin RSS. Ghi ngắn:
+- **Thế giới — tăng mạnh nhất (5 ngày):** 3 nhóm, kèm % và khối lượng so với TB20
+- **Thế giới — giảm mạnh nhất (5 ngày):** 3 nhóm, kèm % và khối lượng
+- **Việt Nam:** VN-Index/VN30/quỹ VNM (% và khối lượng); khối ngoại mua/bán ròng, thanh khoản,
+  nhóm ngành hút tiền — chỉ khi tin RSS có số liệu cụ thể
 ### 📅 Lịch sự kiện
 Mỗi sự kiện 1 dòng: "- **Giờ VN, ngày:** Sự kiện — dự báo / kỳ trước"
 """
@@ -88,6 +94,17 @@ Chỉ các tin mức độ ≥ 3, mỗi tin một khối:
 ### 🌡️ Tâm lý thị trường
 - **Trạng thái:** Risk-on / Risk-off / Hỗn hợp
 - **Bằng chứng:** 1–2 dòng
+### 💸 Dòng tiền đang đổ vào đâu
+**Thế giới**
+- **Đang vào:** 2–3 nhóm tài sản/ngành, kèm số liệu (% 5 ngày, khối lượng)
+- **Đang rút:** 2–3 nhóm, kèm số liệu
+- **Xu hướng xoay vòng:** ví dụ "từ cổ phiếu tăng trưởng sang trái phiếu và vàng" (risk-on/risk-off)
+**Việt Nam**
+- **Khối ngoại:** mua/bán ròng bao nhiêu, tập trung mã/ngành nào (nếu có tin)
+- **Thanh khoản & chỉ số:** VN-Index, thanh khoản tăng hay giảm
+- **Ngành hút tiền:** nhóm ngành tiền đang vào / rút
+- **Liên hệ thế giới:** tỷ giá USD/VND, dòng vốn vào thị trường mới nổi (EEM, VNM) ảnh hưởng gì
+Mục nào không có số liệu thì ghi "chưa có số liệu", không suy đoán con số.
 
 Chỉ dùng dữ kiện được cung cấp; nếu thiếu dữ liệu then chốt, nói rõ.
 """
@@ -150,7 +167,7 @@ def build_analyst(lean: bool = False) -> Agent:
         name="Phân tích",
         system=ANALYST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()) + STYLE_GUIDE,
         effort="high",
-    ), lean)
+    ), lean, max_tokens=1600)  # có thêm mục dòng tiền
 
 
 def build_strategist(lean: bool = False) -> Agent:

@@ -55,3 +55,18 @@ def test_collect_renders_and_tolerates_failures(monkeypatch):
     text = datafeeds.collect(NOW)
     assert "| Vàng (XAU, futures) | 4,100.00 | +2.50% |" in text
     assert "BTC jumps" in text and "https://b.com/x" in text
+
+
+def test_parse_flow_and_render():
+    payload = {"chart": {"result": [{"indicators": {"quote": [{
+        "close": [100, 101, None, 102, 103, 104, 105, 110],
+        "volume": [1000, 1000, None, 1000, 1000, 1000, 1000, 2000],
+    }]}}]}}
+    f = datafeeds.parse_flow("Vàng (GLD)", "GLD", "world", payload)
+    assert round(f.change_1d, 2) == 4.76 and round(f.change_5d, 2) == round((110 / 101 - 1) * 100, 2)
+    assert f.volume_ratio == 2.0
+    weak = datafeeds.FlowStat("TLT", "TLT", "world", -0.5, -2.0, 0.8)
+    lines = "\n".join(datafeeds.render_flows([weak, f]))
+    assert lines.index("Vàng (GLD)") < lines.index("TLT")        # xếp theo % 5 ngày
+    assert "| Vàng (GLD) | +4.8% | +8.9% | 2.0x |" in lines
+    assert "Việt Nam: không lấy được dữ liệu" in lines
