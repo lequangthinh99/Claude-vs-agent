@@ -72,6 +72,26 @@ Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói mi
 ### Email Gmail
 `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=<gmail của bạn>`, `SMTP_PASSWORD=<App Password>` (tạo ở myaccount.google.com → Bảo mật → Mật khẩu ứng dụng).
 
+### Lịch chạy đúng giờ (quan trọng)
+
+Lịch có sẵn của GitHub (`schedule`) **không đảm bảo**: GitHub ghi rõ nó có thể bị trễ hoặc bị bỏ
+khi quá tải, nhất là đầu mỗi giờ. Vì vậy lịch chính dùng **cron-job.org** (miễn phí, chạy đúng phút)
+để gọi workflow; lịch GitHub chỉ còn là dự phòng. Các lần chạy thừa tự bỏ qua, không gửi trùng.
+
+1. Tạo mã truy cập: https://github.com/settings/personal-access-tokens/new
+   - Repository access: *Only select repositories* → `Claude-vs-agent`
+   - Permissions → Repository → **Actions: Read and write**
+   - Hết hạn: 1 năm (nhớ gia hạn; khi hết hạn bot sẽ không chạy).
+2. Trên https://cron-job.org tạo 2 job (múi giờ **Asia/Ho_Chi_Minh**), lúc **06:05** và **17:05**:
+   - URL: `https://api.github.com/repos/lequangthinh99/Claude-vs-agent/actions/workflows/market-report.yml/dispatches`
+   - Method: `POST`
+   - Headers: `Authorization: Bearer <mã github_pat_...>` và `Accept: application/vnd.github+json`
+   - Body (phiên sáng):
+     `{"ref":"claude/ai-agent-market-analysis-ad55hg","inputs":{"mode":"report","session":"morning","scheduled":"yes"}}`
+   - Body (phiên chiều): như trên nhưng `"session":"evening"`.
+   - Kết quả đúng: cron-job.org báo HTTP **204**.
+3. Nếu một lần chạy bị lỗi, bot Telegram nhắn cảnh báo kèm link xem chi tiết.
+
 ## Cách 2 — Chạy trên máy tính / VPS
 
 ```bash
