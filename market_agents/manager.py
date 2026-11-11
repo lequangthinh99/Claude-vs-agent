@@ -66,7 +66,10 @@ và sẽ tự động ghép vào báo cáo). Vì vậy câu trả lời cuối c
 5–7 dòng, mỗi dòng 1 ý, tối đa khoảng 20 từ, bắt đầu bằng nhãn in đậm.
 ## ⚠️ Rủi ro & lưu ý
 2–4 dòng ngắn.
-Không viết tiêu đề báo cáo và không lặp lại các phần khác."""
+Không viết tiêu đề báo cáo và không lặp lại các phần khác.
+Bảng giá, lịch sự kiện và link nguồn do hệ thống tự chèn từ dữ liệu gốc: KHÔNG nhắc tới lịch sự kiện
+hay ngày giờ công bố trong phần tóm tắt, không tự quy đổi đơn vị/tiền tệ, và không giao lại việc chỉ vì
+kết quả không có bảng giá hay lịch. Mỗi agent chỉ được giao 1 lần."""
 LEAN_PREVIEW_CHARS = 700
 LEAN_PREVIOUS_REPORT_CHARS = 1500
 DISCLAIMER = "_Báo cáo do hệ thống AI tạo, chỉ mang tính tham khảo, không phải khuyến nghị đầu tư._"
@@ -182,6 +185,33 @@ def drop_cut_tail(text: str) -> str:
     return "\n".join(lines)
 
 
+def clean_news(text: str, data: MarketData) -> str:
+    """Giữ lại các dòng tin có mã nguồn hợp lệ, mỗi mã 1 lần; bỏ dòng tự chế (không ứng với tin RSS nào).
+
+    Tiêu đề nhóm chuyển thành chữ đậm; nhóm không còn tin nào thì bỏ."""
+    known, used = data.links(), set()
+    out: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("-", "*", "•")) and not stripped.startswith("**"):
+            refs = [r for r in re.findall(r"\bT\d+\b", stripped) if r in known]
+            if not refs or refs[0] in used:
+                continue
+            used.update(refs)
+            out.append(stripped)
+            continue
+        title = re.sub(r"^#+\s*", "", stripped).strip("* ").strip()
+        if title:
+            if out and out[-1].startswith("**"):
+                out.pop()  # nhóm trước không có tin
+            out.append(f"**{title}**")
+    if out and out[-1].startswith("**"):
+        out.pop()
+    return "\n".join(out)
+
+
 def without_heading(text: str) -> str:
     """Bỏ dòng tiêu đề Markdown ở đầu (phần ghép vào báo cáo đã có tiêu đề riêng)."""
     lines = text.strip().split("\n")
@@ -226,6 +256,13 @@ class ManagerAgent:
         ws = Workspace()
         self.collector = build_collector(self.lean, structured=session.data is not None)
 
+        def once(done: str | None) -> str:
+            """Chế độ gọn: Quản lý chỉ thấy đoạn đầu kết quả nên không đủ cơ sở yêu cầu làm lại;
+            mỗi lần giao lại còn tốn thêm hạn mức token/phút. Việc đã xong thì không chạy lại."""
+            if self.lean and done:
+                return "Việc này đã hoàn thành và kết quả đã được lưu. Không giao lại; hãy làm bước tiếp theo."
+            return ""
+
         def assign_collector(data: dict) -> str:
             feed = session.market_data or "(Không có dữ liệu tự động.)"
             prompt = (
@@ -233,7 +270,11 @@ class ManagerAgent:
                 f"<du_lieu_tu_dong>\n{feed}\n</du_lieu_tu_dong>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
+            if once(ws.collector):
+                return once(ws.collector)
             ws.collector = self._run_worker(self.collector, prompt, ws)
+            if self.lean and session.data:
+                ws.collector = clean_news(ws.collector, session.data) or ws.collector
             return self._for_manager(ws.collector)
 
         def assign_analyst(data: dict) -> str:
@@ -248,6 +289,8 @@ class ManagerAgent:
                 f"<bao_cao_ky_truoc>\n{prev}\n</bao_cao_ky_truoc>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
+            if once(ws.analyst):
+                return once(ws.analyst)
             ws.analyst = self._run_worker(self.analyst, prompt, ws)
             return self._for_manager(ws.analyst)
 
@@ -260,6 +303,8 @@ class ManagerAgent:
                 f"<phan_tich_tac_dong>\n{ws.analyst}\n</phan_tich_tac_dong>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
+            if once(ws.strategist):
+                return once(ws.strategist)
             ws.strategist = self._run_worker(self.strategist, prompt, ws)
             return self._for_manager(ws.strategist)
 

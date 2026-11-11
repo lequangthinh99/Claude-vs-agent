@@ -21,7 +21,7 @@ ASSETS: list[tuple[str, str, tuple[str, ...]]] = [
     ("USD (DXY)", "DX-Y.NYB", ("usd", "dxy")),
     ("Vàng", "GC=F", ("vàng", "xau")),
     ("Bitcoin", "BTC-USD", ("bitcoin", "btc")),
-    ("Dầu Brent", "BZ=F", ("dầu",)),
+    ("Dầu Brent", "BZ=F", ("dầu", "brent", "wti", "oil")),
     ("Đồng", "HG=F", ("đồng", "copper")),
     ("Bạc", "SI=F", ("bạc",)),
 ]

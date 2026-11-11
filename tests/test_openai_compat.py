@@ -251,3 +251,25 @@ def test_truncated_worker_is_retried_then_trimmed():
     report = ManagerAgent(GroqBackend("k", "m", post=FakeHTTP(s), sleep=lambda _: None), lean=True).run(session())
     assert "- **Lý do:** a" in report and "**Kịch" not in report and "🥇 Vàng" not in report
     assert drop_cut_tail("một dòng") == "một dòng"
+
+
+def test_lean_manager_cannot_reassign_and_made_up_news_lines_are_dropped():
+    s = scripts()
+    s[MGR] = [call("a", "assign_collector", {"instructions": "x"}), call("b", "assign_collector", {"instructions": "làm lại"}), *s[MGR][1:]]
+    s[COL] = [text("### 💱 USD & ngoại hối\n- **DXY lên 0.5%:** tự chế, không có mã\n- **Giá vàng Hà Nội:** 103 triệu/oz\n"
+                   "**Vĩ mô & NHTW**\n- **Fed giữ lãi suất:** không đổi [T1]\n- **Lặp lại:** cùng tin [T1]\n"
+                   "### 🪙 Crypto\n- **Mã lạ:** x [T9]")]
+    http = FakeHTTP(s)
+    sess = session()
+    sess.data = lean_data()
+    report = ManagerAgent(GroqBackend("k", "m", post=http, sleep=lambda _: None), lean=True).run(sess)
+    assert len([c for c in http.calls if COL in c["messages"][0]["content"]]) == 1   # không chạy lại Thu thập
+    news = report[report.index("## 📰 Tin chính"):report.index("## 💵")]
+    assert news.strip().split("\n")[2:] == ["**Vĩ mô & NHTW**", "- **Fed giữ lãi suất:** không đổi ([CNBC](https://cnbc.com/fed))"]
+
+
+def test_yield_change_is_shown_in_points():
+    from market_agents.datafeeds import MarketData, Quote, render_price_list
+
+    data = MarketData(now=session().now, quotes=[Quote("Lợi suất US 10Y (%)", "^TNX", 4.983, 2.45, None)])
+    assert "- **Lợi suất US 10Y (%):** 4.983 (+0.12 điểm %)" in render_price_list(data)

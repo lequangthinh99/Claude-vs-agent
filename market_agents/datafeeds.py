@@ -415,6 +415,18 @@ def render_flows(flows: list[FlowStat]) -> list[str]:
     return lines
 
 
+YIELD_SYMBOLS = {"^TNX"}
+
+
+def _change(q: Quote) -> str:
+    """Thay đổi so với phiên trước. Lợi suất ghi theo điểm % (4,86 → 4,98 là +0,12 điểm, không phải +2,45%)."""
+    if q.change_pct is None:
+        return ""
+    if q.symbol in YIELD_SYMBOLS:
+        return f"{q.price - q.price / (1 + q.change_pct / 100):+.2f} điểm %"
+    return f"{q.change_pct:+.2f}%"
+
+
 def gold_vnd_per_luong(data: MarketData) -> float | None:
     """Giá vàng thế giới quy đổi ra triệu đồng/lượng (chưa gồm thuế, phí) — để so với giá trong nước."""
     gold, usdvnd = data.price("GC=F"), data.price("VND=X")
@@ -428,7 +440,7 @@ def render_prices(data: MarketData) -> list[str]:
     tz = data.now.tzinfo
     lines = ["| Tài sản | Giá | % so với phiên trước | Thời điểm (giờ VN) |", "|---|---|---|---|"]
     for q in data.quotes:
-        change = f"{q.change_pct:+.2f}%" if q.change_pct is not None else "—"
+        change = _change(q) or "—"
         if not q.time:
             when = "—"
         elif q.symbol in dict((s, n) for n, s in VN_INDEXES):
@@ -448,7 +460,7 @@ def render_price_list(data: MarketData) -> list[str]:
         return []
     lines = [f"_Giá lúc {data.now:%H:%M %d/%m} (giờ VN); % so với phiên trước._", ""]
     for q in data.quotes:
-        change = f" ({q.change_pct:+.2f}%)" if q.change_pct is not None else ""
+        change = f" ({_change(q)})" if _change(q) else ""
         lines.append(f"- **{q.name}:** {_fmt(q.price)}{change}")
     converted = gold_vnd_per_luong(data)
     if converted:

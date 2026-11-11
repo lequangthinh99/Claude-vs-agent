@@ -30,6 +30,8 @@ QUY TẮC DỮ LIỆU (bắt buộc):
 - Giá và % thay đổi: chép đúng từ bảng giá được cung cấp. Nói "tăng"/"giảm" phải khớp dấu của % trong bảng.
 - Lịch sự kiện: chỉ dùng mục "Lịch kinh tế" được cung cấp (hoặc kết quả tìm kiếm web có nguồn).
   KHÔNG tự nghĩ ra sự kiện, ngày giờ công bố hay con số dự báo.
+- Không tự quy đổi đơn vị hay tiền tệ (ví dụ USD/oz sang VND); dầu tính theo USD/thùng, vàng theo USD/oz.
+- "Lợi suất US 10Y" là lợi suất danh nghĩa; thay đổi của nó tính bằng điểm %, không phải "lãi suất thực".
 - Không có số liệu thì bỏ qua ý đó; không viết con số ước đoán, không gán nguồn mà bạn không được cung cấp.
 - Viết hoàn toàn bằng tiếng Việt; chỉ giữ nguyên tên riêng và mã tài sản."""
 
@@ -94,10 +96,12 @@ Nhiệm vụ DUY NHẤT: chọn 8–12 tin có ảnh hưởng tới thị trư�
 - Bỏ: tin thủ tục hành chính, tin doanh nghiệp lẻ, quảng cáo, tin trùng nội dung.
 - Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu dữ kiện và số liệu chính [T7]". Bắt buộc có mã ở cuối.
 - Chỉ ghi dữ kiện có trong tin; không phân tích, không thêm số liệu ngoài tin.
-- KHÔNG viết lại bảng giá, dòng tiền hay lịch sự kiện — hệ thống tự chèn các phần đó.
+- Mỗi dòng ứng với ĐÚNG 1 tin RSS và mỗi mã chỉ dùng 1 lần. Dòng không có mã sẽ bị hệ thống xoá.
+- KHÔNG biến số liệu trong bảng giá thành tin (ví dụ "DXY tăng 0,5%" không phải là tin), không viết lại
+  bảng giá, dòng tiền hay lịch sự kiện — hệ thống tự chèn các phần đó.
 
 Định dạng đầu ra: nhóm tin theo các tiêu đề nhỏ in đậm **Vĩ mô & NHTW**, **USD & ngoại hối**, **Vàng**,
-**Crypto**, **Hàng hoá**, **Địa chính trị**, **Việt Nam** (bỏ nhóm không có tin). Không có tiêu đề "###".
+**Crypto**, **Hàng hoá**, **Địa chính trị**, **Việt Nam** (bỏ nhóm không có tin). Không dùng tiêu đề "#".
 """
 
 ANALYST_SYSTEM_TEMPLATE = """\
@@ -172,6 +176,7 @@ dùng gạch đầu dòng ngắn và bảng nhỏ. Không lặp lại dữ liệ
 LEAN_MAX_TOKENS = 1200
 # Phần Nhận định dài nhất nên dễ bị cắt giữa chừng: ép khuôn ngắn cho từng tài sản.
 STRATEGIST_LEAN_NOTE = """
+Bảng sức mạnh phải có đủ 6 dòng riêng: USD, Vàng, Bitcoin, Dầu, Đồng, Bạc (mỗi dòng một điểm số).
 Để vừa giới hạn: mỗi tài sản USD / Vàng / Bitcoin tối đa 5 dòng (1 lý do, Hỗ trợ / Kháng cự, Kịch bản
 chính, Kịch bản ngược, Sai nếu). Mục Hàng hoá: Dầu, Đồng, Bạc, Nông sản mỗi loại ĐÚNG 1 dòng
 "- **Dầu (−3, giảm):** lý do chính; hỗ trợ / kháng cự". Bỏ mục Tương quan nếu hết chỗ."""
