@@ -13,10 +13,11 @@ from datetime import datetime, timedelta
 
 from .config import Settings
 from .main import run
+from .manager import SLOTS
 
 log = logging.getLogger(__name__)
 
-DELIVERY_TIMES = {"morning": (7, 0), "evening": (18, 0)}
+DELIVERY_TIMES = SLOTS
 LEAD_MINUTES = int(os.getenv("MARKET_AGENTS_LEAD_MINUTES", "55"))
 
 

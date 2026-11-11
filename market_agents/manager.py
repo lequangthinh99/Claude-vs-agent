@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from . import datafeeds
+from .datafeeds import MarketData
 from .llm import Agent, AgentError, Backend, CustomTool
 from .workers import build_analyst, build_collector, build_strategist
 
@@ -38,7 +41,8 @@ Bảng sức mạnh, rồi mỗi tài sản một mục "### <biểu tượng> T
 ## 💸 Dòng tiền: Thế giới · Việt Nam
 Thế giới: đang vào / đang rút / xu hướng xoay vòng. Việt Nam: khối ngoại, thanh khoản, ngành hút tiền.
 ## 📰 Tin chính & mức độ ảnh hưởng
-Mỗi tin 1 dòng: "- **Tin (Mức độ 4/5):** ảnh hưởng tới tài sản nào ([Nguồn](URL))"
+Mỗi tin 1 dòng: "- **Tin (Mức độ 4/5):** ảnh hưởng tới tài sản nào [T12]" — giữ nguyên mã nguồn
+[T..] hoặc link mà nhân viên đã ghi; không tự viết URL.
 ## 🔍 Diễn biến & tâm lý thị trường
 ## 💵 Bảng giá
 ## 📅 Lịch sự kiện
@@ -48,7 +52,8 @@ Kết thúc bằng dòng: _Báo cáo do hệ thống AI tạo, chỉ mang tính 
 QUY TẮC TRÌNH BÀY: chỉ dùng gạch đầu dòng, mỗi dòng 1 ý, tối đa khoảng 20 từ, bắt đầu bằng nhãn
 in đậm; không viết đoạn văn; số liệu gọn (4.100 USD, +2,5%).
 
-Không bịa số liệu: chỉ dùng thông tin từ các agent nhân viên.
+Không bịa số liệu: chỉ dùng thông tin từ các agent nhân viên. Lịch sự kiện chỉ gồm những sự kiện
+nhân viên đã nêu; không tự thêm sự kiện hay giờ công bố.
 """
 
 # Chế độ gọn (cho API giới hạn token/phút thấp như Groq free): Quản lý chỉ thấy bản tóm tắt
@@ -61,7 +66,10 @@ và sẽ tự động ghép vào báo cáo). Vì vậy câu trả lời cuối c
 5–7 dòng, mỗi dòng 1 ý, tối đa khoảng 20 từ, bắt đầu bằng nhãn in đậm.
 ## ⚠️ Rủi ro & lưu ý
 2–4 dòng ngắn.
-Không viết tiêu đề báo cáo và không lặp lại các phần khác."""
+Không viết tiêu đề báo cáo và không lặp lại các phần khác.
+Bảng giá, lịch sự kiện và link nguồn do hệ thống tự chèn từ dữ liệu gốc: KHÔNG nhắc tới lịch sự kiện
+hay ngày giờ công bố trong phần tóm tắt, không tự quy đổi đơn vị/tiền tệ, và không giao lại việc chỉ vì
+kết quả không có bảng giá hay lịch. Mỗi agent chỉ được giao 1 lần."""
 LEAN_PREVIEW_CHARS = 700
 LEAN_PREVIOUS_REPORT_CHARS = 1500
 DISCLAIMER = "_Báo cáo do hệ thống AI tạo, chỉ mang tính tham khảo, không phải khuyến nghị đầu tư._"
@@ -79,12 +87,20 @@ _INSTRUCTIONS_SCHEMA = {
 }
 
 
+# Giờ gửi danh nghĩa của từng phiên (giờ, phút) theo múi giờ báo cáo.
+SLOTS: dict[str, tuple[int, int]] = {"morning": (7, 0), "evening": (18, 0)}
+# Tạo bản tin trễ hơn giờ gửi quá chừng này thì tiêu đề ghi giờ thực thay vì giờ danh nghĩa.
+LATE_TITLE_AFTER = timedelta(minutes=20)
+
+
 @dataclass
 class Session:
     kind: str  # "morning" | "evening"
     now: datetime
     previous_report: str | None = None
-    market_data: str | None = None  # giá + tin RSS lấy miễn phí bằng code
+    market_data: str | None = None  # giá + tin RSS lấy miễn phí bằng code (Markdown cho agent đọc)
+    data: MarketData | None = None  # cùng dữ liệu ở dạng có cấu trúc: dựng bảng và link trong báo cáo
+    scorecard: str = ""             # bảng đối chiếu nhận định kỳ trước (do code chấm)
 
     @property
     def label(self) -> str:
@@ -93,11 +109,15 @@ class Session:
     @property
     def slot(self) -> str:
         """Giờ gửi danh nghĩa của phiên."""
-        return "07:00" if self.kind == "morning" else "18:00"
+        h, m = SLOTS[self.kind]
+        return f"{h:02d}:{m:02d}"
 
     @property
     def title(self) -> str:
-        return f"{self.label} {self.slot} — ngày {self.now:%d/%m/%Y}"
+        h, m = SLOTS[self.kind]
+        slot = self.now.replace(hour=h, minute=m, second=0, microsecond=0)
+        shown = f"{self.now:%H:%M}" if self.now > slot + LATE_TITLE_AFTER else self.slot
+        return f"{self.label} {shown} — ngày {self.now:%d/%m/%Y}"
 
     @property
     def focus(self) -> str:
@@ -143,6 +163,63 @@ def split_section(text: str, marker: str) -> tuple[str, str]:
     return section, rest
 
 
+_CJK = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]+")
+SCORECARD_HEADING = "## 🧮 Đối chiếu nhận định kỳ trước"
+RETRY_SHORTER = ("\n\nLƯU Ý: câu trả lời trước của bạn bị cắt giữa chừng vì quá dài. Viết lại ngắn hơn "
+                 "khoảng 30%, vẫn đủ mọi mục theo đúng khuôn, và kết thúc trọn vẹn.")
+
+
+def strip_foreign_script(text: str) -> str:
+    """Bỏ chữ Hán/Nhật/Hàn mà model nhỏ thỉnh thoảng chèn lẫn vào câu tiếng Việt."""
+    return re.sub(r"[ \t]{2,}", " ", _CJK.sub("", text)) if _CJK.search(text) else text
+
+
+def drop_cut_tail(text: str) -> str:
+    """Bỏ dòng cuối bị cắt dở (khi model chạm giới hạn output)."""
+    lines = text.rstrip().split("\n")
+    if len(lines) > 1:
+        lines.pop()
+    while lines and (not lines[-1].strip() or lines[-1].lstrip().startswith(("#", "|---"))
+                     or lines[-1].rstrip().endswith(":")):
+        lines.pop()  # tiêu đề / dòng dẫn không còn nội dung phía sau
+    return "\n".join(lines)
+
+
+def clean_news(text: str, data: MarketData) -> str:
+    """Giữ lại các dòng tin có mã nguồn hợp lệ, mỗi mã 1 lần; bỏ dòng tự chế (không ứng với tin RSS nào).
+
+    Tiêu đề nhóm chuyển thành chữ đậm; nhóm không còn tin nào thì bỏ."""
+    known, used = data.links(), set()
+    out: list[str] = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("-", "*", "•")) and not stripped.startswith("**"):
+            refs = [r for r in re.findall(r"\bT\d+\b", stripped) if r in known]
+            if not refs or refs[0] in used:
+                continue
+            used.update(refs)
+            out.append(stripped)
+            continue
+        title = re.sub(r"^#+\s*", "", stripped).strip("* ").strip()
+        if title:
+            if out and out[-1].startswith("**"):
+                out.pop()  # nhóm trước không có tin
+            out.append(f"**{title}**")
+    if out and out[-1].startswith("**"):
+        out.pop()
+    return "\n".join(out)
+
+
+def without_heading(text: str) -> str:
+    """Bỏ dòng tiêu đề Markdown ở đầu (phần ghép vào báo cáo đã có tiêu đề riêng)."""
+    lines = text.strip().split("\n")
+    while lines and (lines[0].startswith("#") or not lines[0].strip()):
+        lines.pop(0)
+    return "\n".join(lines)
+
+
 class ManagerAgent:
     def __init__(self, backend: Backend, lean: bool = False):
         self.backend = backend
@@ -151,6 +228,13 @@ class ManagerAgent:
         self.analyst = build_analyst(lean)
         self.strategist = build_strategist(lean)
 
+    def _evidence(self, session: Session, ws: Workspace) -> str:
+        """Dữ liệu đưa cho Phân tích / Nhận định. Ở chế độ gọn có dữ liệu tự động, Thu thập chỉ
+        trả về tin đã chọn lọc, nên phải kèm thêm các bảng do code dựng."""
+        if self.lean and session.data:
+            return f"{datafeeds.render_tables(session.data)}\n\n### Tin chính (đã chọn lọc)\n{ws.collector}"
+        return ws.collector or ""
+
     def _for_manager(self, text: str) -> str:
         """Kết quả trả về cho Agent Quản lý (rút gọn ở chế độ gọn)."""
         if not self.lean or len(text) <= LEAN_PREVIEW_CHARS:
@@ -158,7 +242,26 @@ class ManagerAgent:
         return text[:LEAN_PREVIEW_CHARS] + "\n…(phần còn lại đã được lưu và sẽ ghép vào báo cáo)"
 
     def run(self, session: Session) -> str:
+        """Tạo báo cáo rồi hậu xử lý bằng code: đổi mã nguồn thành link thật, bỏ ký tự lạ."""
+        report = strip_foreign_script(datafeeds.resolve_refs(self._run(session), session.data))
+        if session.scorecard and SCORECARD_HEADING not in report:  # chế độ thường: chèn trước phần cuối
+            block = f"{SCORECARD_HEADING}\n\n{session.scorecard}\n\n"
+            cut = report.find("## ⚠️")
+            if cut < 0:
+                cut = report.find(DISCLAIMER)
+            report = report[:cut] + block + report[cut:] if cut >= 0 else f"{report}\n\n{block.strip()}"
+        return report
+
+    def _run(self, session: Session) -> str:
         ws = Workspace()
+        self.collector = build_collector(self.lean, structured=session.data is not None)
+
+        def once(done: str | None) -> str:
+            """Chế độ gọn: Quản lý chỉ thấy đoạn đầu kết quả nên không đủ cơ sở yêu cầu làm lại;
+            mỗi lần giao lại còn tốn thêm hạn mức token/phút. Việc đã xong thì không chạy lại."""
+            if self.lean and done:
+                return "Việc này đã hoàn thành và kết quả đã được lưu. Không giao lại; hãy làm bước tiếp theo."
+            return ""
 
         def assign_collector(data: dict) -> str:
             feed = session.market_data or "(Không có dữ liệu tự động.)"
@@ -167,7 +270,11 @@ class ManagerAgent:
                 f"<du_lieu_tu_dong>\n{feed}\n</du_lieu_tu_dong>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
+            if once(ws.collector):
+                return once(ws.collector)
             ws.collector = self._run_worker(self.collector, prompt, ws)
+            if self.lean and session.data:
+                ws.collector = clean_news(ws.collector, session.data) or ws.collector
             return self._for_manager(ws.collector)
 
         def assign_analyst(data: dict) -> str:
@@ -178,10 +285,12 @@ class ManagerAgent:
                 prev = prev[:LEAN_PREVIOUS_REPORT_CHARS] + "\n…(chỉ trích phần đầu)"
             prompt = (
                 f"{session.context()}\n\n"
-                f"<du_lieu_thu_thap>\n{ws.collector}\n</du_lieu_thu_thap>\n\n"
+                f"<du_lieu_thu_thap>\n{self._evidence(session, ws)}\n</du_lieu_thu_thap>\n\n"
                 f"<bao_cao_ky_truoc>\n{prev}\n</bao_cao_ky_truoc>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
+            if once(ws.analyst):
+                return once(ws.analyst)
             ws.analyst = self._run_worker(self.analyst, prompt, ws)
             return self._for_manager(ws.analyst)
 
@@ -190,10 +299,12 @@ class ManagerAgent:
                 raise AgentError("Cần có kết quả Thu thập và Phân tích trước khi Nhận định.")
             prompt = (
                 f"{session.context()}\n\n"
-                f"<du_lieu_thu_thap>\n{ws.collector}\n</du_lieu_thu_thap>\n\n"
+                f"<du_lieu_thu_thap>\n{self._evidence(session, ws)}\n</du_lieu_thu_thap>\n\n"
                 f"<phan_tich_tac_dong>\n{ws.analyst}\n</phan_tich_tac_dong>\n\n"
                 f"Chỉ dẫn từ Agent Quản lý:\n{data['instructions']}"
             )
+            if once(ws.strategist):
+                return once(ws.strategist)
             ws.strategist = self._run_worker(self.strategist, prompt, ws)
             return self._for_manager(ws.strategist)
 
@@ -277,12 +388,22 @@ class ManagerAgent:
                 break
         flows, analysis = split_section(ws.analyst or "", "### 💸")
         parts = [f"# {session.title}", "", summary.strip(), ""]
-        for heading, body in (
+        data = session.data
+        sections = [
             ("## 🎯 Nhận định: USD · Vàng · BTC · Hàng hoá", ws.strategist),
+            (SCORECARD_HEADING, session.scorecard),
             ("## 💸 Dòng tiền: Thế giới · Việt Nam", flows),
             ("## 🔍 Phân tích tác động", analysis),
-            ("## 📰 Dữ liệu & tin chính", ws.collector),
-        ):
+        ]
+        if data:  # bảng giá và lịch do code dựng từ dữ liệu gốc; mục nào không có dữ liệu thì bỏ hẳn
+            sections += [
+                ("## 📰 Tin chính", without_heading(ws.collector or "")),
+                ("## 💵 Bảng giá", "\n".join(datafeeds.render_price_list(data))),
+                ("## 📅 Lịch sự kiện", "\n".join(datafeeds.render_calendar(data))),
+            ]
+        else:
+            sections.append(("## 📰 Dữ liệu & tin chính", ws.collector))
+        for heading, body in sections:
             if body and body.strip():
                 parts += [heading, "", body.strip(), ""]
         if risks:
@@ -293,6 +414,13 @@ class ManagerAgent:
     def _run_worker(self, agent: Agent, prompt: str, ws: Workspace) -> str:
         ws.log.append(agent.name)
         result = self.backend.run(agent, prompt)
+        if result.truncated:  # bị cắt giữa chừng: thử lại 1 lần với yêu cầu viết ngắn hơn
+            log.warning("[%s] kết quả bị cắt, thử lại với yêu cầu viết ngắn hơn", agent.name)
+            retry = self.backend.run(agent, prompt + RETRY_SHORTER)
+            if not retry.truncated:
+                return retry.text
+            longer = max(result.text, retry.text, key=len)
+            return drop_cut_tail(longer)
         return result.text
 
     @staticmethod

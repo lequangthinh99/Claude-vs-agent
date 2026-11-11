@@ -100,6 +100,7 @@ class ClaudeBackend:
             ).strip()
             if stop == "max_tokens":
                 log.warning("[%s] chạm max_tokens, kết quả có thể bị cắt", agent.name)
+                result.truncated = True
             if not text:
                 raise AgentError(f"[{agent.name}] không trả về nội dung (stop_reason={stop})")
             result.text = text

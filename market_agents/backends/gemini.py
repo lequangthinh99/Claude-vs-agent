@@ -168,6 +168,7 @@ class GeminiBackend:
                 raise AgentError(f"[{agent.name}] Gemini chặn nội dung (finish_reason={finish})")
             if "MAX_TOKENS" in finish:
                 log.warning("[%s] chạm giới hạn output, kết quả có thể bị cắt", agent.name)
+                result.truncated = True
             if not text:
                 raise AgentError(f"[{agent.name}] Gemini không trả về nội dung (finish_reason={finish})")
 

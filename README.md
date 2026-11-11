@@ -24,20 +24,43 @@
 | Agent | File | Nhiệm vụ |
 |---|---|---|
 | Quản lý | `market_agents/manager.py` | Giao việc theo thứ tự, kiểm tra chất lượng, yêu cầu làm lại nếu thiếu (tối đa 1 lần/agent), tổng hợp báo cáo |
-| Thu thập | `market_agents/workers.py` | Tìm tin vĩ mô, NHTW, USD, vàng (cả SJC/nhẫn), BTC, dầu, kim loại, nông sản, lịch sự kiện — kèm nguồn |
+| Thu thập | `market_agents/workers.py` | Chọn lọc và tóm tắt tin vĩ mô, NHTW, USD, vàng, BTC, dầu, kim loại, nông sản, Việt Nam — kèm mã nguồn `[T..]` |
 | Phân tích | `market_agents/workers.py` | Kênh truyền dẫn, mức độ ảnh hưởng 1–5, đã phản ánh vào giá chưa, so sánh với báo cáo kỳ trước |
 | Nhận định | `market_agents/workers.py` | Điểm sức mạnh −5..+5, xu hướng ngắn/trung hạn, hỗ trợ/kháng cự, kịch bản có xác suất |
 
 **Skill tài chính** nằm ở `market_agents/skills/financial_analysis.md` (kênh truyền dẫn, thang điểm, động lực từng tài sản). Sửa file này để thay đổi cách agent phân tích — không cần sửa code.
 
-**Dữ liệu miễn phí:** trước khi các agent làm việc, `market_agents/datafeeds.py` tự lấy giá (Yahoo Finance) và tin RSS (CNBC, Investing.com, FXStreet, CoinDesk, Cointelegraph, OilPrice, Fed, VnExpress, CafeF) rồi đưa cho Agent Thu thập. Nhờ vậy hệ thống vẫn chạy khi gói AI miễn phí không cho dùng tìm kiếm web. Thêm/bớt nguồn bằng cách sửa danh sách `PRICE_SYMBOLS` và `NEWS_FEEDS`.
+**Dữ liệu miễn phí:** trước khi các agent làm việc, `market_agents/datafeeds.py` tự lấy:
+
+| Dữ liệu | Nguồn |
+|---|---|
+| Giá, chỉ báo dòng tiền (quỹ ETF) | Yahoo Finance |
+| VN-Index, VN30 | DNSE (Entrade) |
+| Lịch kinh tế 36 giờ tới (giờ VN, dự báo / kỳ trước) | ForexFactory |
+| Tin tức | RSS: CNBC, Investing.com, CoinDesk, Cointelegraph, OilPrice, Fed, VnExpress, CafeF, Vietstock |
+
+Thêm/bớt nguồn bằng cách sửa `PRICE_SYMBOLS`, `FLOW_SYMBOLS`, `NEWS_FEEDS`. Kiểm tra từng nguồn: Actions → Run workflow → mode `check-feeds`.
+
+**Phần nào do code làm, phần nào do AI viết** (để hạn chế số liệu bịa):
+
+- **Code dựng thẳng từ dữ liệu gốc:** bảng giá, lịch sự kiện, link nguồn của tin, bảng đối chiếu nhận định kỳ trước.
+  Mục nào không có dữ liệu thì bỏ hẳn (ví dụ không lấy được lịch → không có mục Lịch sự kiện).
+- **AI viết:** tóm tắt, chọn lọc tin, phân tích tác động, dòng tiền, nhận định và rủi ro. Agent trích nguồn bằng mã
+  `[T7]`; code đổi mã thành link thật và bỏ mã không tồn tại.
+- **Kiểm tra sau khi sinh:** câu trả lời bị cắt vì quá dài được chạy lại 1 lần với yêu cầu viết ngắn hơn (vẫn cắt thì
+  bỏ dòng dở); chữ Hán/Nhật/Hàn lẫn vào bị loại; ở chế độ gọn, lấy được dưới 8 mã giá thì không tạo bản tin.
+- **Chưa có:** giá vàng SJC/nhẫn trong nước và số liệu khối ngoại (các nguồn công khai chặn truy cập tự động).
+  Bảng giá có dòng *vàng thế giới quy đổi ra triệu đồng/lượng* để tự so với giá trong nước.
+
+**Chấm lại nhận định:** mỗi phiên lưu giá và điểm sức mạnh vào `reports/data/<ngày>-<phiên>.json`. Bản tin sau so chiều
+của điểm với biến động giá thực tế và ghi tỷ lệ đúng chiều của 30 phiên gần nhất (`market_agents/tracking.py`).
 
 Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đưa cho agent Phân tích làm bối cảnh, để báo cáo theo dõi được **diễn biến** qua các phiên.
 
 ## Cấu trúc báo cáo
 
-1. Tóm tắt nhanh · 2. Bảng giá tham chiếu · 3. Tin chính & mức độ ảnh hưởng · 4. Phân tích diễn biến ·
-5. Nhận định USD · Vàng · BTC · Hàng hoá · 6. Lịch sự kiện · 7. Rủi ro & lưu ý
+1. Tóm tắt nhanh · 2. Nhận định USD · Vàng · BTC · Hàng hoá · 3. Đối chiếu nhận định kỳ trước · 4. Dòng tiền ·
+5. Phân tích tác động · 6. Tin chính (kèm link) · 7. Bảng giá · 8. Lịch sự kiện · 9. Rủi ro & lưu ý
 
 ## Chọn nhà cung cấp AI
 
@@ -60,10 +83,10 @@ Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói mi
    - **Một** trong các key: `GROQ_API_KEY` (console.groq.com/keys), `GEMINI_API_KEY` (aistudio.google.com/apikey) hoặc `ANTHROPIC_API_KEY` (console.anthropic.com)
    - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - và/hoặc Email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_EMAIL_TO`
-2. Workflow `.github/workflows/market-report.yml` chạy lúc 06:05 và 17:05 giờ VN, tạo báo cáo rồi **giữ lại tới đúng 07:00 / 18:00** mới gửi, sau đó commit báo cáo vào `reports/`.
+2. Workflow `.github/workflows/market-report.yml` tạo báo cáo, **giữ lại tới đúng 07:00 / 18:00** mới gửi (nếu xong sớm), rồi commit vào `reports/`. Để gửi đúng giờ cần làm thêm mục **Lịch chạy đúng giờ** bên dưới.
 3. Chạy thử ngay: tab **Actions → Bản tin thị trường → Run workflow**.
 
-> Lưu ý: GitHub chỉ chạy lịch (`schedule`) trên **nhánh mặc định** — cần merge code vào nhánh mặc định. GitHub đôi khi khởi động lịch trễ 5–15 phút vào giờ cao điểm; nếu muốn đúng giờ tuyệt đối, dùng Cách 2.
+> Lưu ý: GitHub chỉ chạy lịch (`schedule`) trên **nhánh mặc định** — cần merge code vào nhánh mặc định. Lịch của GitHub có thể khởi động trễ nhiều giờ — xem mục **Lịch chạy đúng giờ**.
 
 ### Lấy thông tin Telegram
 - Nhắn `/newbot` cho **@BotFather** → nhận `TELEGRAM_BOT_TOKEN`.
@@ -74,9 +97,21 @@ Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói mi
 
 ### Lịch chạy đúng giờ (quan trọng)
 
-Lịch có sẵn của GitHub (`schedule`) **không đảm bảo**: GitHub ghi rõ nó có thể bị trễ hoặc bị bỏ
-khi quá tải, nhất là đầu mỗi giờ. Vì vậy lịch chính dùng **cron-job.org** (miễn phí, chạy đúng phút)
-để gọi workflow; lịch GitHub chỉ còn là dự phòng. Các lần chạy thừa tự bỏ qua, không gửi trùng.
+Lịch có sẵn của GitHub (`schedule`) **không đảm bảo**: ở repo này nó đã từng khởi động trễ 3–8 tiếng.
+Vì vậy lịch chính dùng **cron-job.org** (miễn phí, chạy đúng phút) để gọi workflow; lịch GitHub
+(chạy mỗi giờ) chỉ là dự phòng. **Nếu chưa thiết lập cron-job.org, bản tin vẫn tới nhưng có thể trễ vài tiếng.**
+
+Mọi lần chạy theo lịch đều dùng `--scheduled`, tự quyết định theo giờ thực lúc chạy:
+
+| Giờ VN lúc chạy | Việc làm |
+|---|---|
+| 05:45–13:00 | Bản tin sáng — xong trước 07:00 thì giữ tới 07:00; sau 07:00 thì gửi ngay, tiêu đề ghi giờ thực |
+| 16:45–24:00 | Bản tin chiều — tương tự với mốc 18:00 |
+| Ngoài hai khung | Thoát ngay, không gọi AI |
+
+Phiên nào đã có bản tin thì các lần chạy sau tự bỏ qua, không gửi trùng. Nếu tạo xong mà không gửi được
+qua kênh nào, lần chạy được tính là lỗi (có cảnh báo) và lần dự phòng kế tiếp sẽ làm lại.
+Chỉnh khung bằng `MARKET_AGENTS_MAX_HOLD_MINUTES` (mặc định 75) và `MARKET_AGENTS_MAX_LATE_HOURS` (mặc định 6).
 
 1. Tạo mã truy cập: https://github.com/settings/personal-access-tokens/new
    - Repository access: *Only select repositories* → `Claude-vs-agent`
@@ -90,7 +125,8 @@ khi quá tải, nhất là đầu mỗi giờ. Vì vậy lịch chính dùng **c
      `{"ref":"claude/ai-agent-market-analysis-ad55hg","inputs":{"mode":"report","session":"morning","scheduled":"yes"}}`
    - Body (phiên chiều): như trên nhưng `"session":"evening"`.
    - Kết quả đúng: cron-job.org báo HTTP **204**.
-3. Nếu một lần chạy bị lỗi, bot Telegram nhắn cảnh báo kèm link xem chi tiết.
+3. Nếu một lần chạy bị lỗi hoặc bị huỷ vì quá thời gian, bot Telegram nhắn cảnh báo kèm link xem chi tiết.
+4. Kiểm tra cron-job.org có hoạt động không: tab **Actions** phải có lần chạy loại *workflow_dispatch* lúc 06:05 và 17:05 mỗi ngày.
 
 ## Cách 2 — Chạy trên máy tính / VPS
 
@@ -105,7 +141,7 @@ python -m market_agents.main --session morning    # chạy phiên sáng và gử
 python -m market_agents.scheduler                 # chạy nền: tự gửi 07:00 và 18:00 mỗi ngày
 ```
 
-Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .venv/bin/python -m market_agents.main --hold`
+Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .venv/bin/python -m market_agents.main --scheduled`
 
 ## Cấu hình
 
@@ -120,6 +156,8 @@ Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .
 | (Actions → Run workflow → mode `check-feeds`) | | Kiểm tra từng nguồn giá, dòng tiền, tin RSS miễn phí — không gọi AI |
 | `MARKET_AGENTS_DATAFEEDS` | `1` | `0` để tắt lấy giá/tin RSS miễn phí |
 | `MARKET_AGENTS_LEAD_MINUTES` | `55` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
+| `MARKET_AGENTS_MAX_HOLD_MINUTES` | `75` | Giữ bản tin chờ giờ gửi tối đa bao nhiêu phút; `--scheduled` tới sớm hơn mức này thì thoát |
+| `MARKET_AGENTS_MAX_LATE_HOURS` | `6` | `--scheduled` tới trễ hơn giờ gửi quá mức này thì bỏ qua phiên |
 
 ## Chi phí ước tính
 

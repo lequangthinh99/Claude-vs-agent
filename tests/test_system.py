@@ -9,7 +9,7 @@ import pytest
 
 from market_agents import main as main_mod
 from market_agents.config import Settings
-from market_agents.delivery import split_message
+from market_agents.delivery import latest_previous_report, split_message
 from market_agents.backends.claude import ClaudeBackend
 from market_agents.llm import Agent, AgentError
 from market_agents.manager import ManagerAgent, Session
@@ -188,3 +188,99 @@ def test_skip_if_done(tmp_path, monkeypatch):
     (tmp_path / f"{now:%Y-%m-%d}-morning.md").write_text("x", encoding="utf-8")
     assert main_mod.already_done(settings, "morning")
     assert not main_mod.already_done(settings, "evening")
+
+
+def test_scheduled_session_uses_time_window_not_trigger_time():
+    at = lambda h, m=0: datetime(2026, 1, 1, h, m, tzinfo=VN)
+    # Lịch chiều bị trễ sang 01:00 hôm sau, lịch sáng trễ tới 13:30: không làm gì, không nhận nhầm phiên.
+    assert main_mod.scheduled_session(at(1)) is None
+    assert main_mod.scheduled_session(at(13, 30)) is None
+    assert main_mod.scheduled_session(at(5, 30)) is None      # quá sớm, phải chờ > 75 phút
+    assert main_mod.scheduled_session(at(5, 50)) == "morning"
+    assert main_mod.scheduled_session(at(10, 30)) == "morning"  # trễ nhưng vẫn gửi
+    assert main_mod.scheduled_session(at(16, 50)) == "evening"
+    assert main_mod.scheduled_session(at(23, 40)) == "evening"
+    # Phiên được chỉ định (cron-job.org) vẫn phải nằm trong khung của chính nó.
+    assert main_mod.scheduled_session(at(6, 5), "morning") == "morning"
+    assert main_mod.scheduled_session(at(1), "morning") is None
+    assert main_mod.scheduled_session(at(10), "evening") is None
+
+
+def test_scheduled_run_outside_window_does_nothing(monkeypatch):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 1, 1, 1, 0, tzinfo=tz)
+
+    monkeypatch.setattr(main_mod, "datetime", Clock)
+    monkeypatch.setattr(main_mod, "run", lambda *a, **k: pytest.fail("không được tạo bản tin"))
+    assert main_mod.main(["--scheduled"]) == 0
+
+
+def test_title_shows_real_time_when_late():
+    assert Session("morning", datetime(2026, 1, 1, 6, 10, tzinfo=VN)).title.startswith("Bản tin sáng 07:00")
+    assert Session("morning", datetime(2026, 1, 1, 10, 30, tzinfo=VN)).title.startswith("Bản tin sáng 10:30")
+    assert Session("evening", datetime(2026, 1, 1, 18, 10, tzinfo=VN)).title.startswith("Bản tin chiều 18:00")
+
+
+def test_hold_is_capped(tmp_path, monkeypatch):
+    settings = Settings(reports_dir=tmp_path, use_datafeeds=False)
+    slept = []
+    monkeypatch.setattr(main_mod.time, "sleep", slept.append)
+    monkeypatch.setattr(main_mod, "seconds_until_slot", lambda *a: 6 * 3600.0)
+    monkeypatch.setattr(main_mod, "deliver", lambda *a: ["telegram"])
+    main_mod.run("morning", hold=True, settings=settings, backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
+    assert slept == []
+    monkeypatch.setattr(main_mod, "seconds_until_slot", lambda *a: 600.0)
+    main_mod.run("morning", hold=True, settings=settings, backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
+    assert slept == [600.0]
+
+
+def test_failed_delivery_is_an_error_and_allows_retry(tmp_path, monkeypatch):
+    settings = Settings(reports_dir=tmp_path, use_datafeeds=False,
+                        telegram_bot_token="t", telegram_chat_id="1", smtp_host="", email_to="")
+    monkeypatch.setattr(main_mod, "deliver", lambda *a: [])
+    with pytest.raises(main_mod.DeliveryError):
+        main_mod.run("morning", settings=settings, backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
+    assert not main_mod.already_done(settings, "morning")
+    # Không cấu hình kênh nào (chạy thử trên máy): không coi là lỗi, vẫn giữ file.
+    local = Settings(reports_dir=tmp_path, use_datafeeds=False, telegram_bot_token="", telegram_chat_id="",
+                     smtp_host="", email_to="")
+    main_mod.run("morning", settings=local, backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
+    assert main_mod.already_done(local, "morning")
+
+
+def test_previous_report_is_latest_session_not_latest_filename(tmp_path):
+    settings = Settings(reports_dir=tmp_path, use_datafeeds=False)
+    for name in ("2026-01-01-morning", "2026-01-01-evening", "2025-12-31-evening"):
+        (tmp_path / f"{name}.md").write_text(name, encoding="utf-8")
+    assert latest_previous_report(settings, "2026-01-02-morning.md") == "2026-01-01-evening"
+    assert latest_previous_report(settings, "2026-01-01-evening.md") == "2026-01-01-morning"
+
+
+def test_lean_run_refuses_to_report_without_prices(tmp_path, monkeypatch):
+    from market_agents.datafeeds import MarketData
+
+    settings = Settings(reports_dir=tmp_path, provider="groq", lean_mode=True)
+    monkeypatch.setattr(main_mod.datafeeds, "collect_data", lambda now, **k: MarketData(now=now))
+    with pytest.raises(AgentError, match="mã giá"):
+        main_mod.run("morning", send=False, settings=settings,
+                     backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
+    assert not list(tmp_path.glob("*.md"))
+
+
+def test_run_saves_snapshot_and_adds_scorecard(tmp_path, monkeypatch):
+    from market_agents.datafeeds import MarketData, Quote
+
+    settings = Settings(reports_dir=tmp_path, provider="claude", lean_mode=False)
+    prices = iter([4000.0, 4100.0])
+    monkeypatch.setattr(main_mod.datafeeds, "collect_data", lambda now, **k: MarketData(
+        now=now, quotes=[Quote("Vàng", "GC=F", next(prices), None, now)]))
+    final = "# BÁO CÁO\n| Vàng | +3 |\n## ⚠️ Rủi ro\n- x"
+    run = lambda kind: main_mod.run(kind, send=False, settings=settings,
+                                    backend=ClaudeBackend(FakeClient(manager_scripts(final)), "m"))
+    assert "🧮" not in run("morning")
+    assert len(list((tmp_path / "data").glob("*-morning.json"))) == 1
+    report = run("evening")
+    assert "- **Vàng:** điểm +3 → giá +2.50% ✅ đúng chiều" in report
+    assert report.index("## 🧮") < report.index("## ⚠️")

@@ -2,18 +2,15 @@ name: Bản tin thị trường (07:00 & 18:00 giờ VN)
 
 on:
   # LỊCH CHÍNH: cron-job.org gọi workflow_dispatch đúng 06:05 và 17:05 với scheduled=yes
-  # (xem README, mục "Lịch chạy đúng giờ"). Lịch GitHub bên dưới chỉ là DỰ PHÒNG:
-  # GitHub ghi rõ sự kiện `schedule` có thể bị trễ hoặc bị bỏ khi quá tải, nhất là đầu mỗi giờ,
-  # nên các mốc dưới đây dùng phút lẻ, tránh đầu giờ. Lần nào thấy bản tin của phiên đã có thì
-  # tự bỏ qua (--skip-if-done); bản tin xong sớm được giữ tới đúng 07:00 / 18:00 (--hold).
-  # Giờ UTC; Việt Nam = UTC+7.
+  # (xem README, mục "Lịch chạy đúng giờ"). Lịch GitHub bên dưới chỉ là DỰ PHÒNG.
+  #
+  # Sự kiện `schedule` của GitHub không đáng tin về giờ: thực tế ở repo này nó khởi động trễ
+  # 3–8 tiếng. Vì vậy lịch chạy MỖI GIỜ và code tự quyết định theo giờ thực (--scheduled):
+  #   - 05:45–13:00 giờ VN: làm bản tin sáng; 16:45–24:00: bản tin chiều; ngoài khung: thoát ngay.
+  #   - Phiên đã có bản tin thì bỏ qua. Xong trước giờ gửi thì giữ tới đúng 07:00 / 18:00
+  #     (tối đa 75 phút); tới trễ thì gửi ngay và tiêu đề ghi giờ thực.
   schedule:
-    - cron: "12 23 * * *"   # 06:12 giờ VN (phiên sáng, dự phòng 1)
-    - cron: "41 23 * * *"   # 06:41 giờ VN (dự phòng 2)
-    - cron: "17 0 * * *"    # 07:17 giờ VN (dự phòng 3, gửi trễ)
-    - cron: "13 10 * * *"   # 17:13 giờ VN (phiên chiều, dự phòng 1)
-    - cron: "44 10 * * *"   # 17:44 giờ VN (dự phòng 2)
-    - cron: "17 11 * * *"   # 18:17 giờ VN (dự phòng 3, gửi trễ)
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       session:
@@ -66,7 +63,8 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.GROQ_AI_API }}
           GROQ_MODEL: ${{ vars.GROQ_MODEL }}
-        run: python -m market_agents.check_models ${{ github.event.inputs.models }}
+          MODELS: ${{ github.event.inputs.models }}
+        run: python -m market_agents.check_models $MODELS
 
       - name: Kiểm tra nguồn dữ liệu miễn phí
         if: github.event.inputs.mode == 'check-feeds'
@@ -92,13 +90,19 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+          INPUT_SESSION: ${{ github.event.inputs.session }}
+          INPUT_SCHEDULED: ${{ github.event.inputs.scheduled }}
         run: |
-          ARGS=""
-          if [ -n "${{ github.event.inputs.session }}" ]; then ARGS="--session ${{ github.event.inputs.session }}"; fi
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.scheduled }}" = "yes" ]; then
-            ARGS="$ARGS --hold --skip-if-done"
+          ARGS=()
+          case "$INPUT_SESSION" in
+            morning|evening) ARGS+=(--session "$INPUT_SESSION") ;;
+            "") ;;
+            *) echo "session phải là morning hoặc evening"; exit 2 ;;
+          esac
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] || [ "$INPUT_SCHEDULED" = "yes" ]; then
+            ARGS+=(--scheduled)
           fi
-          python -m market_agents.main $ARGS > /dev/null
+          python -m market_agents.main "${ARGS[@]}" > /dev/null
 
       - name: Lưu báo cáo vào repo
         if: github.event.inputs.mode != 'check-models' && github.event.inputs.mode != 'check-feeds'
@@ -111,13 +115,14 @@ jobs:
           git push
 
       - name: Báo lỗi qua Telegram
-        if: failure() && github.event.inputs.mode != 'check-models' && github.event.inputs.mode != 'check-feeds'
+        # cancelled(): job bị huỷ vì quá timeout cũng phải báo, không chỉ khi lỗi.
+        if: (failure() || cancelled()) && github.event.inputs.mode != 'check-models' && github.event.inputs.mode != 'check-feeds'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           [ -z "$TELEGRAM_BOT_TOKEN" ] && exit 0
-          TEXT="⚠️ Bản tin thị trường bị lỗi lúc $(TZ=Asia/Ho_Chi_Minh date '+%H:%M %d/%m'). Hệ thống sẽ thử lại ở mốc dự phòng kế tiếp. Xem chi tiết: $RUN_URL"
+          TEXT="⚠️ Bản tin thị trường bị lỗi hoặc bị huỷ lúc $(TZ=Asia/Ho_Chi_Minh date '+%H:%M %d/%m'). Hệ thống sẽ thử lại ở lần chạy dự phòng kế tiếp (mỗi giờ). Xem chi tiết: $RUN_URL"
           curl -sS -m 20 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=${TEXT}" > /dev/null
