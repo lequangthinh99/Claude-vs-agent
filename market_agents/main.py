@@ -4,21 +4,24 @@
     python -m market_agents.main --session morning
     python -m market_agents.main --hold           # tạo xong thì chờ tới đúng 07:00/18:00 mới gửi
     python -m market_agents.main --no-send        # chỉ tạo và lưu file, không gửi
+    python -m market_agents.main --scheduled      # cho lịch tự động: tự chọn phiên theo khung giờ,
+                                                  # bỏ qua nếu quá sớm / quá trễ / đã gửi
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import datafeeds
 from .backends import make_backend
 from .config import Settings
-from .delivery import deliver, latest_previous_report, save_report
+from .delivery import configured_channels, deliver, latest_previous_report, save_report
 from .llm import AgentError, Backend
-from .manager import ManagerAgent, Session
+from .manager import SLOTS, ManagerAgent, Session
 
 log = logging.getLogger(__name__)
 
@@ -28,10 +31,44 @@ def detect_session(now: datetime) -> str:
     return "morning" if now.hour < 12 else "evening"
 
 
+# Chỉ giữ bản tin tối đa chừng này phút để chờ đúng giờ gửi. Lịch GitHub có thể khởi động
+# lệch nhiều giờ; chờ lâu hơn sẽ chạm timeout của job và mất luôn bản tin.
+MAX_HOLD_MINUTES = int(os.getenv("MARKET_AGENTS_MAX_HOLD_MINUTES", "75"))
+# Lần chạy theo lịch tới trễ hơn chừng này giờ so với giờ gửi thì bỏ qua (bản tin đã cũ).
+MAX_LATE_HOURS = float(os.getenv("MARKET_AGENTS_MAX_LATE_HOURS", "6"))
+
+
+class DeliveryError(AgentError):
+    """Đã cấu hình kênh gửi nhưng không gửi được qua kênh nào."""
+
+
+def slot_time(kind: str, now: datetime) -> datetime:
+    """Giờ gửi danh nghĩa của phiên `kind` trong ngày của `now`."""
+    h, m = SLOTS[kind]
+    return now.replace(hour=h, minute=m, second=0, microsecond=0)
+
+
 def seconds_until_slot(session: Session, now: datetime) -> float:
-    h, m = map(int, session.slot.split(":"))
-    target = session.now.replace(hour=h, minute=m, second=0, microsecond=0)
-    return max(0.0, (target - now).total_seconds())
+    return max(0.0, (slot_time(session.kind, session.now) - now).total_seconds())
+
+
+def in_window(kind: str, now: datetime) -> bool:
+    """`now` có nằm trong khung được phép tạo bản tin của phiên `kind` không?
+
+    Khung = [giờ gửi − MAX_HOLD_MINUTES, giờ gửi + MAX_LATE_HOURS]. Với mặc định:
+    sáng 05:45–13:00, chiều 16:45–24:00 — hai khung không chồng nhau."""
+    slot = slot_time(kind, now)
+    return slot - timedelta(minutes=MAX_HOLD_MINUTES) <= now <= slot + timedelta(hours=MAX_LATE_HOURS)
+
+
+def scheduled_session(now: datetime, requested: str | None = None) -> str | None:
+    """Phiên mà một lần chạy theo lịch nên làm lúc `now`; None = không có gì để làm.
+
+    Không dựa vào việc lịch khởi động đúng giờ: lần chạy tới lúc nào thì xét khung giờ lúc đó."""
+    for kind in ([requested] if requested else list(SLOTS)):
+        if in_window(kind, now):
+            return kind
+    return None
 
 
 def report_filename(now: datetime, kind: str) -> str:
@@ -65,14 +102,22 @@ def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
     manager = ManagerAgent(backend, lean=settings.lean)
     report = manager.run(session)
 
-    save_report(settings, filename, report)
+    path = save_report(settings, filename, report)
     if send:
         if hold:
             wait = seconds_until_slot(session, datetime.now(settings.timezone))
-            if wait > 0:
+            if wait > MAX_HOLD_MINUTES * 60:
+                log.warning("Còn %.0f phút mới tới %s — quá giới hạn chờ %d phút, gửi ngay.",
+                            wait / 60, session.slot, MAX_HOLD_MINUTES)
+            elif wait > 0:
                 log.info("Báo cáo xong sớm, chờ %.0f giây tới %s để gửi", wait, session.slot)
                 time.sleep(wait)
-        deliver(settings, session.title, report)
+        sent = deliver(settings, session.title, report)
+        if not sent and configured_channels(settings):
+            # Xoá file để lần chạy dự phòng (--skip-if-done) không tưởng là đã gửi xong.
+            path.unlink(missing_ok=True)
+            raise DeliveryError("Đã tạo bản tin nhưng không gửi được qua kênh nào "
+                                f"({', '.join(configured_channels(settings))}).")
     return report
 
 
@@ -83,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hold", action="store_true", help="chờ tới đúng 07:00/18:00 rồi mới gửi")
     parser.add_argument("--skip-if-done", action="store_true",
                         help="bỏ qua nếu bản tin của phiên này hôm nay đã có (dùng cho các lần chạy dự phòng)")
+    parser.add_argument("--scheduled", action="store_true",
+                        help="dùng cho lịch tự động: tự chọn phiên theo khung giờ hiện tại, bỏ qua nếu "
+                             "quá sớm / quá trễ / đã gửi; bao gồm --hold và --skip-if-done")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -90,11 +138,21 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    if args.skip_if_done and already_done(Settings(), args.session):
+    settings = Settings()
+    session_kind, hold, skip_if_done = args.session, args.hold, args.skip_if_done
+    if args.scheduled:
+        now = datetime.now(settings.timezone)
+        session_kind = scheduled_session(now, args.session)
+        if session_kind is None:
+            logging.info("%s: ngoài khung giờ tạo bản tin%s — không làm gì.", f"{now:%H:%M}",
+                         f" phiên {args.session}" if args.session else "")
+            return 0
+        hold = skip_if_done = True
+    if skip_if_done and already_done(settings, session_kind):
         logging.info("Bản tin của phiên này hôm nay đã được gửi — bỏ qua lần chạy dự phòng.")
         return 0
     try:
-        report = run(args.session, send=not args.no_send, hold=args.hold)
+        report = run(session_kind, send=not args.no_send, hold=hold, settings=settings)
     except AgentError as exc:
         logging.error("%s", exc)
         return 1

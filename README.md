@@ -60,10 +60,10 @@ Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói mi
    - **Một** trong các key: `GROQ_API_KEY` (console.groq.com/keys), `GEMINI_API_KEY` (aistudio.google.com/apikey) hoặc `ANTHROPIC_API_KEY` (console.anthropic.com)
    - Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - và/hoặc Email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_EMAIL_TO`
-2. Workflow `.github/workflows/market-report.yml` chạy lúc 06:05 và 17:05 giờ VN, tạo báo cáo rồi **giữ lại tới đúng 07:00 / 18:00** mới gửi, sau đó commit báo cáo vào `reports/`.
+2. Workflow `.github/workflows/market-report.yml` tạo báo cáo, **giữ lại tới đúng 07:00 / 18:00** mới gửi (nếu xong sớm), rồi commit vào `reports/`. Để gửi đúng giờ cần làm thêm mục **Lịch chạy đúng giờ** bên dưới.
 3. Chạy thử ngay: tab **Actions → Bản tin thị trường → Run workflow**.
 
-> Lưu ý: GitHub chỉ chạy lịch (`schedule`) trên **nhánh mặc định** — cần merge code vào nhánh mặc định. GitHub đôi khi khởi động lịch trễ 5–15 phút vào giờ cao điểm; nếu muốn đúng giờ tuyệt đối, dùng Cách 2.
+> Lưu ý: GitHub chỉ chạy lịch (`schedule`) trên **nhánh mặc định** — cần merge code vào nhánh mặc định. Lịch của GitHub có thể khởi động trễ nhiều giờ — xem mục **Lịch chạy đúng giờ**.
 
 ### Lấy thông tin Telegram
 - Nhắn `/newbot` cho **@BotFather** → nhận `TELEGRAM_BOT_TOKEN`.
@@ -74,9 +74,21 @@ Với Gemini miễn phí: mỗi bản tin dùng khoảng 8–12 request. Gói mi
 
 ### Lịch chạy đúng giờ (quan trọng)
 
-Lịch có sẵn của GitHub (`schedule`) **không đảm bảo**: GitHub ghi rõ nó có thể bị trễ hoặc bị bỏ
-khi quá tải, nhất là đầu mỗi giờ. Vì vậy lịch chính dùng **cron-job.org** (miễn phí, chạy đúng phút)
-để gọi workflow; lịch GitHub chỉ còn là dự phòng. Các lần chạy thừa tự bỏ qua, không gửi trùng.
+Lịch có sẵn của GitHub (`schedule`) **không đảm bảo**: ở repo này nó đã từng khởi động trễ 3–8 tiếng.
+Vì vậy lịch chính dùng **cron-job.org** (miễn phí, chạy đúng phút) để gọi workflow; lịch GitHub
+(chạy mỗi giờ) chỉ là dự phòng. **Nếu chưa thiết lập cron-job.org, bản tin vẫn tới nhưng có thể trễ vài tiếng.**
+
+Mọi lần chạy theo lịch đều dùng `--scheduled`, tự quyết định theo giờ thực lúc chạy:
+
+| Giờ VN lúc chạy | Việc làm |
+|---|---|
+| 05:45–13:00 | Bản tin sáng — xong trước 07:00 thì giữ tới 07:00; sau 07:00 thì gửi ngay, tiêu đề ghi giờ thực |
+| 16:45–24:00 | Bản tin chiều — tương tự với mốc 18:00 |
+| Ngoài hai khung | Thoát ngay, không gọi AI |
+
+Phiên nào đã có bản tin thì các lần chạy sau tự bỏ qua, không gửi trùng. Nếu tạo xong mà không gửi được
+qua kênh nào, lần chạy được tính là lỗi (có cảnh báo) và lần dự phòng kế tiếp sẽ làm lại.
+Chỉnh khung bằng `MARKET_AGENTS_MAX_HOLD_MINUTES` (mặc định 75) và `MARKET_AGENTS_MAX_LATE_HOURS` (mặc định 6).
 
 1. Tạo mã truy cập: https://github.com/settings/personal-access-tokens/new
    - Repository access: *Only select repositories* → `Claude-vs-agent`
@@ -90,7 +102,8 @@ khi quá tải, nhất là đầu mỗi giờ. Vì vậy lịch chính dùng **c
      `{"ref":"claude/ai-agent-market-analysis-ad55hg","inputs":{"mode":"report","session":"morning","scheduled":"yes"}}`
    - Body (phiên chiều): như trên nhưng `"session":"evening"`.
    - Kết quả đúng: cron-job.org báo HTTP **204**.
-3. Nếu một lần chạy bị lỗi, bot Telegram nhắn cảnh báo kèm link xem chi tiết.
+3. Nếu một lần chạy bị lỗi hoặc bị huỷ vì quá thời gian, bot Telegram nhắn cảnh báo kèm link xem chi tiết.
+4. Kiểm tra cron-job.org có hoạt động không: tab **Actions** phải có lần chạy loại *workflow_dispatch* lúc 06:05 và 17:05 mỗi ngày.
 
 ## Cách 2 — Chạy trên máy tính / VPS
 
@@ -105,7 +118,7 @@ python -m market_agents.main --session morning    # chạy phiên sáng và gử
 python -m market_agents.scheduler                 # chạy nền: tự gửi 07:00 và 18:00 mỗi ngày
 ```
 
-Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .venv/bin/python -m market_agents.main --hold`
+Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .venv/bin/python -m market_agents.main --scheduled`
 
 ## Cấu hình
 
@@ -120,6 +133,8 @@ Hoặc dùng cron (máy đặt giờ VN): `5 6,17 * * * cd /đường/dẫn && .
 | (Actions → Run workflow → mode `check-feeds`) | | Kiểm tra từng nguồn giá, dòng tiền, tin RSS miễn phí — không gọi AI |
 | `MARKET_AGENTS_DATAFEEDS` | `1` | `0` để tắt lấy giá/tin RSS miễn phí |
 | `MARKET_AGENTS_LEAD_MINUTES` | `55` | Scheduler bắt đầu sớm bao nhiêu phút trước giờ gửi |
+| `MARKET_AGENTS_MAX_HOLD_MINUTES` | `75` | Giữ bản tin chờ giờ gửi tối đa bao nhiêu phút; `--scheduled` tới sớm hơn mức này thì thoát |
+| `MARKET_AGENTS_MAX_LATE_HOURS` | `6` | `--scheduled` tới trễ hơn giờ gửi quá mức này thì bỏ qua phiên |
 
 ## Chi phí ước tính
 

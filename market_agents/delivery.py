@@ -31,8 +31,23 @@ def save_report(settings: Settings, filename: str, report: str) -> Path:
 def latest_previous_report(settings: Settings, exclude: str) -> str | None:
     if not settings.reports_dir.exists():
         return None
-    files = sorted(p for p in settings.reports_dir.glob("*.md") if p.name != exclude)
+    files = sorted((p for p in settings.reports_dir.glob("*.md") if p.name != exclude), key=_report_order)
     return files[-1].read_text(encoding="utf-8") if files else None
+
+
+def _report_order(path: Path) -> tuple[str, int]:
+    """Sắp theo ngày rồi tới phiên (sáng trước chiều) — tên file thì "evening" lại đứng trước "morning"."""
+    day, _, kind = path.stem.rpartition("-")
+    return (day, {"morning": 0, "evening": 1}.get(kind, 2))
+
+
+def configured_channels(settings: Settings) -> list[str]:
+    channels = []
+    if settings.telegram_bot_token and settings.telegram_chat_id:
+        channels.append("telegram")
+    if settings.smtp_host and settings.email_to:
+        channels.append("email")
+    return channels
 
 
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:

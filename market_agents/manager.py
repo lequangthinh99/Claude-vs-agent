@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .llm import Agent, AgentError, Backend, CustomTool
 from .workers import build_analyst, build_collector, build_strategist
@@ -79,6 +79,12 @@ _INSTRUCTIONS_SCHEMA = {
 }
 
 
+# Giờ gửi danh nghĩa của từng phiên (giờ, phút) theo múi giờ báo cáo.
+SLOTS: dict[str, tuple[int, int]] = {"morning": (7, 0), "evening": (18, 0)}
+# Tạo bản tin trễ hơn giờ gửi quá chừng này thì tiêu đề ghi giờ thực thay vì giờ danh nghĩa.
+LATE_TITLE_AFTER = timedelta(minutes=20)
+
+
 @dataclass
 class Session:
     kind: str  # "morning" | "evening"
@@ -93,11 +99,15 @@ class Session:
     @property
     def slot(self) -> str:
         """Giờ gửi danh nghĩa của phiên."""
-        return "07:00" if self.kind == "morning" else "18:00"
+        h, m = SLOTS[self.kind]
+        return f"{h:02d}:{m:02d}"
 
     @property
     def title(self) -> str:
-        return f"{self.label} {self.slot} — ngày {self.now:%d/%m/%Y}"
+        h, m = SLOTS[self.kind]
+        slot = self.now.replace(hour=h, minute=m, second=0, microsecond=0)
+        shown = f"{self.now:%H:%M}" if self.now > slot + LATE_TITLE_AFTER else self.slot
+        return f"{self.label} {shown} — ngày {self.now:%d/%m/%Y}"
 
     @property
     def focus(self) -> str:
