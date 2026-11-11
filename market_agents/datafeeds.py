@@ -12,7 +12,7 @@ import os
 import re
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
@@ -85,6 +85,18 @@ NEWS_FEEDS: list[tuple[str, str]] = [
 ]
 MAX_ITEMS_PER_FEED = 10
 
+# Chỉ số chứng khoán Việt Nam (Yahoo không có) — API biểu đồ công khai của DNSE/Entrade.
+ENTRADE_URL = "https://services.entrade.com.vn/chart-api/v2/ohlcs/index?from={start}&to={end}&symbol={symbol}&resolution=1D"
+VN_INDEXES: list[tuple[str, str]] = [("VN-Index", "VNINDEX"), ("VN30", "VN30")]
+
+# Lịch kinh tế trong tuần (ForexFactory). Chỉ lấy sự kiện của các nền kinh tế lớn.
+CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+CALENDAR_COUNTRIES = {"USD": "Mỹ", "EUR": "Eurozone", "CNY": "Trung Quốc", "JPY": "Nhật", "GBP": "Anh"}
+CALENDAR_HOURS = 36
+MAX_EVENTS = 12
+
+TROY_OUNCES_PER_LUONG = 1.20565  # 1 lượng = 37,5 g
+
 
 @dataclass
 class Quote:
@@ -112,6 +124,35 @@ class NewsItem:
     link: str
     published: datetime | None
     summary: str
+    ref: str = ""  # mã trích dẫn (T1, T2, ...) để agent ghi nguồn; code đổi lại thành link thật
+
+
+@dataclass
+class CalendarEvent:
+    time: datetime
+    country: str   # mã tiền tệ: USD, EUR, ...
+    title: str
+    impact: str    # "High" | "Medium"
+    forecast: str
+    previous: str
+
+
+@dataclass
+class MarketData:
+    """Dữ liệu lấy bằng code cho một phiên. Bảng trong báo cáo được dựng thẳng từ đây, không qua AI."""
+
+    now: datetime
+    quotes: list[Quote] = field(default_factory=list)
+    flows: list[FlowStat] = field(default_factory=list)
+    news: list[NewsItem] = field(default_factory=list)
+    events: list[CalendarEvent] = field(default_factory=list)
+    calendar_ok: bool = False  # lấy được lịch kinh tế (kể cả khi không có sự kiện nào sắp tới)
+
+    def price(self, symbol: str) -> float | None:
+        return next((q.price for q in self.quotes if q.symbol == symbol), None)
+
+    def links(self) -> dict[str, NewsItem]:
+        return {i.ref: i for i in self.news if i.ref}
 
 
 def _get(url: str) -> bytes:
@@ -148,6 +189,55 @@ def fetch_quote(name: str, symbol: str) -> Quote | None:
         return parse_yahoo_chart(name, symbol, json.loads(_get(url)))
     except Exception as exc:  # noqa: BLE001 - nguồn miễn phí, lỗi thì bỏ qua
         log.warning("Không lấy được giá %s: %s", symbol, exc)
+        return None
+
+
+def parse_entrade(name: str, symbol: str, payload: dict) -> Quote | None:
+    closes, times = payload.get("c") or [], payload.get("t") or []
+    if not closes:
+        return None
+    change = (closes[-1] / closes[-2] - 1) * 100 if len(closes) >= 2 and closes[-2] else None
+    when = datetime.fromtimestamp(times[-1], tz=timezone.utc) if len(times) == len(closes) else None
+    return Quote(name, symbol, float(closes[-1]), change, when)
+
+
+def fetch_vn_index(name: str, symbol: str, now: datetime) -> Quote | None:
+    end = int(now.timestamp())
+    try:
+        url = ENTRADE_URL.format(start=end - 14 * 86400, end=end, symbol=symbol)
+        return parse_entrade(name, symbol, json.loads(_get(url)))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Không lấy được chỉ số %s: %s", symbol, exc)
+        return None
+
+
+# ---------------------------------------------------------------- lịch kinh tế
+def parse_calendar(payload: list, now: datetime, hours: int = CALENDAR_HOURS) -> list[CalendarEvent]:
+    """Sự kiện quan trọng trong `hours` giờ tới: mọi sự kiện High, và Medium của Mỹ."""
+    until = now + timedelta(hours=hours)
+    events = []
+    for row in payload:
+        country, impact = row.get("country", ""), row.get("impact", "")
+        if country not in CALENDAR_COUNTRIES or not (impact == "High" or (impact == "Medium" and country == "USD")):
+            continue
+        try:
+            when = datetime.fromisoformat(row.get("date", ""))
+        except ValueError:
+            continue
+        if when.tzinfo is None or not now <= when <= until:
+            continue
+        events.append(CalendarEvent(when, country, _clean(row.get("title"), 80), impact,
+                                    (row.get("forecast") or "").strip(), (row.get("previous") or "").strip()))
+    events.sort(key=lambda e: (e.time, e.impact != "High"))
+    return events[:MAX_EVENTS]
+
+
+def fetch_calendar(now: datetime) -> list[CalendarEvent] | None:
+    """None = không lấy được lịch (khác với danh sách rỗng = không có sự kiện quan trọng)."""
+    try:
+        return parse_calendar(json.loads(_get(CALENDAR_URL)), now)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Không lấy được lịch kinh tế: %s", exc)
         return None
 
 
@@ -249,21 +339,51 @@ def fetch_feed(source: str, url: str, since: datetime) -> list[NewsItem]:
 
 
 # ---------------------------------------------------------------- tổng hợp
-def collect(now: datetime, hours: int = 14, max_items: int = MAX_ITEMS_PER_FEED,
-            summary_len: int = 300) -> str:
-    """Lấy giá + tin trong `hours` giờ gần nhất, trả về Markdown cho agent đọc."""
+def _title_key(title: str) -> str:
+    return re.sub(r"\W+", " ", title.lower()).strip()
+
+
+def dedupe_news(news: list[NewsItem]) -> list[NewsItem]:
+    """Bỏ tin trùng tiêu đề giữa các nguồn, xếp mới nhất trước và gán mã trích dẫn T1, T2, ..."""
+    seen: set[str] = set()
+    unique = []
+    for item in sorted(news, key=lambda i: (i.published is not None, i.published or datetime.min.replace(
+            tzinfo=timezone.utc)), reverse=True):
+        key = _title_key(item.title)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    for n, item in enumerate(unique, 1):
+        item.ref = f"T{n}"
+    return unique
+
+
+def collect_data(now: datetime, hours: int = 14, max_items: int = MAX_ITEMS_PER_FEED,
+                 summary_len: int = 300) -> MarketData:
+    """Lấy giá, dòng tiền, lịch kinh tế và tin trong `hours` giờ gần nhất."""
     since = now.astimezone(timezone.utc) - timedelta(hours=hours)
     with ThreadPoolExecutor(max_workers=12) as pool:
         quote_futs = [pool.submit(fetch_quote, n, s) for n, s in PRICE_SYMBOLS]
+        quote_futs += [pool.submit(fetch_vn_index, n, s, now) for n, s in VN_INDEXES]
         flow_futs = [pool.submit(fetch_flow, n, s, r) for n, s, r in FLOW_SYMBOLS]
         news_futs = [pool.submit(fetch_feed, n, u, since) for n, u in NEWS_FEEDS]
+        calendar_fut = pool.submit(fetch_calendar, now)
         quotes = [q for f in quote_futs if (q := f.result())]
         flows = [x for f in flow_futs if (x := f.result())]
         news = [i for f in news_futs for i in f.result()[:max_items]]
+        events = calendar_fut.result()
     for item in news:
         if len(item.summary) > summary_len:
             item.summary = item.summary[: summary_len - 1] + "…"
-    return render(quotes, news, now, flows)
+    return MarketData(now=now, quotes=quotes, flows=flows, news=dedupe_news(news),
+                      events=events or [], calendar_ok=events is not None)
+
+
+def collect(now: datetime, hours: int = 14, max_items: int = MAX_ITEMS_PER_FEED,
+            summary_len: int = 300) -> str:
+    """Như `collect_data` nhưng trả về luôn Markdown cho agent đọc."""
+    return render_data(collect_data(now, hours, max_items, summary_len))
 
 
 def _fmt(price: float) -> str:
@@ -295,27 +415,110 @@ def render_flows(flows: list[FlowStat]) -> list[str]:
     return lines
 
 
-def render(quotes: list[Quote], news: list[NewsItem], now: datetime,
-           flows: list[FlowStat] | None = None) -> str:
-    tz = now.tzinfo
-    lines = [f"Dữ liệu tự động lấy lúc {now:%d/%m/%Y %H:%M} (giờ VN).", "", "### Giá thị trường (Yahoo Finance)"]
-    if quotes:
-        lines += ["| Tài sản | Giá | % so với phiên trước | Thời điểm (giờ VN) |", "|---|---|---|---|"]
-        for q in quotes:
-            change = f"{q.change_pct:+.2f}%" if q.change_pct is not None else "—"
-            when = q.time.astimezone(tz).strftime("%d/%m %H:%M") if q.time else "—"
-            lines.append(f"| {q.name} | {_fmt(q.price)} | {change} | {when} |")
+def gold_vnd_per_luong(data: MarketData) -> float | None:
+    """Giá vàng thế giới quy đổi ra triệu đồng/lượng (chưa gồm thuế, phí) — để so với giá trong nước."""
+    gold, usdvnd = data.price("GC=F"), data.price("VND=X")
+    return gold * usdvnd * TROY_OUNCES_PER_LUONG / 1e6 if gold and usdvnd else None
+
+
+def render_prices(data: MarketData) -> list[str]:
+    """Bảng giá Markdown — dùng cả cho agent đọc lẫn chèn thẳng vào báo cáo."""
+    if not data.quotes:
+        return []
+    tz = data.now.tzinfo
+    lines = ["| Tài sản | Giá | % so với phiên trước | Thời điểm (giờ VN) |", "|---|---|---|---|"]
+    for q in data.quotes:
+        change = f"{q.change_pct:+.2f}%" if q.change_pct is not None else "—"
+        if not q.time:
+            when = "—"
+        elif q.symbol in dict((s, n) for n, s in VN_INDEXES):
+            when = q.time.astimezone(tz).strftime("phiên %d/%m")
+        else:
+            when = q.time.astimezone(tz).strftime("%d/%m %H:%M")
+        lines.append(f"| {q.name} | {_fmt(q.price)} | {change} | {when} |")
+    converted = gold_vnd_per_luong(data)
+    if converted:
+        lines.append(f"| Vàng thế giới quy đổi (triệu đ/lượng, chưa thuế phí) | {converted:.1f} | — | — |")
+    return lines
+
+
+def render_price_list(data: MarketData) -> list[str]:
+    """Bảng giá cho báo cáo: mỗi tài sản 1 dòng ngắn, đọc gọn trên điện thoại (Telegram không có bảng)."""
+    if not data.quotes:
+        return []
+    lines = [f"_Giá lúc {data.now:%H:%M %d/%m} (giờ VN); % so với phiên trước._", ""]
+    for q in data.quotes:
+        change = f" ({q.change_pct:+.2f}%)" if q.change_pct is not None else ""
+        lines.append(f"- **{q.name}:** {_fmt(q.price)}{change}")
+    converted = gold_vnd_per_luong(data)
+    if converted:
+        lines.append(f"- **Vàng thế giới quy đổi:** ≈ {converted:.1f} triệu đ/lượng (chưa thuế, phí)")
+    return lines
+
+
+def render_calendar(data: MarketData) -> list[str]:
+    """Lịch sự kiện theo giờ VN, mỗi sự kiện 1 dòng. Rỗng nếu không có sự kiện."""
+    tz = data.now.tzinfo
+    lines = []
+    for e in data.events:
+        extra = " · ".join(x for x in (f"dự báo {e.forecast}" if e.forecast else "",
+                                       f"kỳ trước {e.previous}" if e.previous else "") if x)
+        mark = "🔴" if e.impact == "High" else "🟠"
+        lines.append(f"- **{e.time.astimezone(tz):%H:%M %d/%m}** {mark} {CALENDAR_COUNTRIES[e.country]}: {e.title}"
+                     + (f" — {extra}" if extra else ""))
+    return lines
+
+
+def render_tables(data: MarketData) -> str:
+    """Giá + dòng tiền + lịch kinh tế (không kèm tin) cho agent đọc."""
+    lines = [f"Dữ liệu tự động lấy lúc {data.now:%d/%m/%Y %H:%M} (giờ VN).", "",
+             "### Giá thị trường (Yahoo Finance; VN-Index/VN30: DNSE)"]
+    lines += render_prices(data) or ["(Không lấy được dữ liệu giá.)"]
+    lines += render_flows(data.flows)
+    lines += ["", f"### Lịch kinh tế {CALENDAR_HOURS} giờ tới (ForexFactory; 🔴 quan trọng cao, 🟠 trung bình)"]
+    if data.events:
+        lines += render_calendar(data)
+    elif data.calendar_ok:
+        lines.append("(Không có sự kiện quan trọng.)")
     else:
-        lines.append("(Không lấy được dữ liệu giá.)")
-    if flows is not None:
-        lines += render_flows(flows)
-    lines += ["", f"### Tin tức RSS ({len(news)} tin)"]
-    for i in sorted(news, key=lambda i: i.published or now, reverse=True):
+        lines.append("(Không lấy được lịch — KHÔNG tự nêu sự kiện hay giờ công bố.)")
+    return "\n".join(lines)
+
+
+def render_news(data: MarketData) -> str:
+    """Tin RSS cho agent đọc. Không kèm URL (đỡ tốn token): agent trích bằng mã [T..]."""
+    tz = data.now.tzinfo
+    lines = [f"### Tin tức RSS ({len(data.news)} tin) — trích nguồn bằng mã trong ngoặc vuông, ví dụ [T3]"]
+    for i in data.news:
         when = i.published.astimezone(tz).strftime("%d/%m %H:%M") if i.published else "?"
-        lines.append(f"- [{when}] **{i.title}** — {i.summary} ({i.source}, {i.link})")
-    if not news:
+        lines.append(f"- [{i.ref}] [{when}] **{i.title}** — {i.summary} ({i.source})")
+    if not data.news:
         lines.append("(Không lấy được tin RSS.)")
     return "\n".join(lines)
+
+
+def render_data(data: MarketData) -> str:
+    return render_tables(data) + "\n\n" + render_news(data)
+
+
+_REF = re.compile(r"\s*[\[(]+\s*(T\d+(?:\s*[,;]\s*T\d+)*)\s*[\])]+")
+
+
+def resolve_refs(text: str, data: MarketData | None) -> str:
+    """Đổi mã trích dẫn [T3] thành link thật ([Nguồn](URL)); mã không tồn tại thì bỏ."""
+    links = data.links() if data else {}
+
+    def swap(match: re.Match) -> str:
+        out = []
+        for ref in re.findall(r"T\d+", match.group(1)):
+            item = links.get(ref)
+            if item and item.link.startswith("http"):
+                out.append(f"[{item.source}]({item.link})")
+            elif item:
+                out.append(item.source)
+        return f" ({', '.join(out)})" if out else ""
+
+    return _REF.sub(swap, text)
 
 
 def check_sources() -> int:
@@ -326,6 +529,9 @@ def check_sources() -> int:
         q = {pool.submit(fetch_quote, n, s): (n, s) for n, s in PRICE_SYMBOLS}
         fl = {pool.submit(fetch_flow, n, s, r): (n, s) for n, s, r in FLOW_SYMBOLS}
         nf = {pool.submit(fetch_feed, n, u, since): (n, u) for n, u in NEWS_FEEDS}
+        now = datetime.now(timezone.utc)
+        q.update({pool.submit(fetch_vn_index, n, s, now): (n, s) for n, s in VN_INDEXES})
+        cal = pool.submit(fetch_calendar, now)
         for fut, (n, s) in q.items():
             rows.append(("Giá", f"{n} ({s})", "OK" if fut.result() else "LỖI"))
         for fut, (n, s) in fl.items():
@@ -335,6 +541,9 @@ def check_sources() -> int:
         for fut, (n, u) in nf.items():
             items = fut.result()
             rows.append(("Tin RSS", n, f"OK {len(items)} tin/48h" if items else "LỖI hoặc không có tin"))
+    events = cal.result()
+    rows.append(("Lịch", "Lịch kinh tế (ForexFactory)",
+                 f"OK {len(events)} sự kiện/{CALENDAR_HOURS}h" if events is not None else "LỖI"))
     for kind, name, status in rows:
         print(f"{status[:3]:4} {kind:10} {name}  {status}", flush=True)
     lines = ["## Kiểm tra nguồn dữ liệu miễn phí", "", "| Loại | Nguồn | Kết quả |", "|---|---|---|"]

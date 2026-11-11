@@ -16,7 +16,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 
-from . import datafeeds
+from . import datafeeds, tracking
 from .backends import make_backend
 from .config import Settings
 from .delivery import configured_channels, deliver, latest_previous_report, save_report
@@ -31,6 +31,8 @@ def detect_session(now: datetime) -> str:
     return "morning" if now.hour < 12 else "evening"
 
 
+# Chế độ gọn cần ít nhất chừng này mã giá lấy được thì mới tạo bản tin.
+MIN_QUOTES = 8
 # Chỉ giữ bản tin tối đa chừng này phút để chờ đúng giờ gửi. Lịch GitHub có thể khởi động
 # lệch nhiều giờ; chờ lâu hơn sẽ chạm timeout của job và mất luôn bản tin.
 MAX_HOLD_MINUTES = int(os.getenv("MARKET_AGENTS_MAX_HOLD_MINUTES", "75"))
@@ -92,10 +94,17 @@ def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
     market_data = None
     if settings.use_datafeeds:
         log.info("Đang lấy giá và tin RSS miễn phí...")
-        market_data = (datafeeds.collect(now, max_items=4, summary_len=140) if settings.lean
-                       else datafeeds.collect(now))
+        market_data = (datafeeds.collect_data(now, max_items=4, summary_len=140) if settings.lean
+                       else datafeeds.collect_data(now))
+        if settings.lean and len(market_data.quotes) < MIN_QUOTES:
+            # Chế độ gọn không có tìm kiếm web: thiếu bảng giá thì model chỉ còn cách đoán số.
+            raise AgentError(f"Chỉ lấy được {len(market_data.quotes)} mã giá (cần ≥ {MIN_QUOTES}) — "
+                             "không tạo bản tin để tránh số liệu bịa.")
+    stem = filename.removesuffix(".md")
     session = Session(kind=kind, now=now, previous_report=latest_previous_report(settings, filename),
-                      market_data=market_data)
+                      market_data=datafeeds.render_data(market_data) if market_data else None,
+                      data=market_data,
+                      scorecard=tracking.scorecard(settings, market_data, stem) if market_data else "")
     backend = backend or make_backend(settings)
     log.info("Nhà cung cấp AI: %s (model %s)%s", settings.provider, backend.model,
              " — chế độ gọn" if settings.lean else "")
@@ -103,6 +112,8 @@ def run(session_kind: str | None = None, send: bool = True, hold: bool = False,
     report = manager.run(session)
 
     path = save_report(settings, filename, report)
+    if market_data:
+        tracking.save_snapshot(settings, stem, market_data, report)
     if send:
         if hold:
             wait = seconds_until_slot(session, datetime.now(settings.timezone))

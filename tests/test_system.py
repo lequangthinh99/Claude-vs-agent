@@ -256,3 +256,31 @@ def test_previous_report_is_latest_session_not_latest_filename(tmp_path):
         (tmp_path / f"{name}.md").write_text(name, encoding="utf-8")
     assert latest_previous_report(settings, "2026-01-02-morning.md") == "2026-01-01-evening"
     assert latest_previous_report(settings, "2026-01-01-evening.md") == "2026-01-01-morning"
+
+
+def test_lean_run_refuses_to_report_without_prices(tmp_path, monkeypatch):
+    from market_agents.datafeeds import MarketData
+
+    settings = Settings(reports_dir=tmp_path, provider="groq", lean_mode=True)
+    monkeypatch.setattr(main_mod.datafeeds, "collect_data", lambda now, **k: MarketData(now=now))
+    with pytest.raises(AgentError, match="mã giá"):
+        main_mod.run("morning", send=False, settings=settings,
+                     backend=ClaudeBackend(FakeClient(manager_scripts()), "m"))
+    assert not list(tmp_path.glob("*.md"))
+
+
+def test_run_saves_snapshot_and_adds_scorecard(tmp_path, monkeypatch):
+    from market_agents.datafeeds import MarketData, Quote
+
+    settings = Settings(reports_dir=tmp_path, provider="claude", lean_mode=False)
+    prices = iter([4000.0, 4100.0])
+    monkeypatch.setattr(main_mod.datafeeds, "collect_data", lambda now, **k: MarketData(
+        now=now, quotes=[Quote("Vàng", "GC=F", next(prices), None, now)]))
+    final = "# BÁO CÁO\n| Vàng | +3 |\n## ⚠️ Rủi ro\n- x"
+    run = lambda kind: main_mod.run(kind, send=False, settings=settings,
+                                    backend=ClaudeBackend(FakeClient(manager_scripts(final)), "m"))
+    assert "🧮" not in run("morning")
+    assert len(list((tmp_path / "data").glob("*-morning.json"))) == 1
+    report = run("evening")
+    assert "- **Vàng:** điểm +3 → giá +2.50% ✅ đúng chiều" in report
+    assert report.index("## 🧮") < report.index("## ⚠️")

@@ -23,7 +23,15 @@ QUY TẮC TRÌNH BÀY (bắt buộc — người đọc xem trên điện thoạ
 - Bảng tối đa 4 cột, mỗi ô thật ngắn.
 - Không mở đầu, không kết luận chung chung, không lặp lại thông tin.
 - Bỏ hẳn mục không có thông tin (không viết "không có dữ liệu" cho từng mục).
-- Chỉ chèn link khi có URL thật; không có URL thì chỉ ghi tên nguồn, ví dụ "(Yahoo Finance)"."""
+- Nguồn của tin RSS: ghi mã của tin ở cuối dòng, ví dụ "[T12]" — hệ thống tự đổi thành link thật.
+  KHÔNG tự viết URL (trừ URL lấy được từ công cụ tìm kiếm web); không có mã thì chỉ ghi tên nguồn.
+
+QUY TẮC DỮ LIỆU (bắt buộc):
+- Giá và % thay đổi: chép đúng từ bảng giá được cung cấp. Nói "tăng"/"giảm" phải khớp dấu của % trong bảng.
+- Lịch sự kiện: chỉ dùng mục "Lịch kinh tế" được cung cấp (hoặc kết quả tìm kiếm web có nguồn).
+  KHÔNG tự nghĩ ra sự kiện, ngày giờ công bố hay con số dự báo.
+- Không có số liệu thì bỏ qua ý đó; không viết con số ước đoán, không gán nguồn mà bạn không được cung cấp.
+- Viết hoàn toàn bằng tiếng Việt; chỉ giữ nguyên tên riêng và mã tài sản."""
 
 
 COLLECTOR_SYSTEM = """\
@@ -62,7 +70,7 @@ Bảng: Tài sản | Giá | Thay đổi | Thời điểm
 ### 📰 Tin chính
 Nhóm theo các tiêu đề nhỏ in đậm: **Vĩ mô & NHTW**, **USD & ngoại hối**, **Vàng**, **Crypto**,
 **Hàng hoá**, **Địa chính trị**, **Việt Nam** (bỏ nhóm không có tin).
-Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu số liệu chính ([Nguồn](URL))"
+Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu số liệu chính [T12]" (tin từ tìm kiếm web: "([Nguồn](URL))")
 ### 💸 Dữ liệu dòng tiền
 Lấy từ "Chỉ báo dòng tiền" và tin RSS. Ghi ngắn:
 - **Thế giới — tăng mạnh nhất (5 ngày):** 3 nhóm, kèm % và khối lượng so với TB20
@@ -71,6 +79,25 @@ Lấy từ "Chỉ báo dòng tiền" và tin RSS. Ghi ngắn:
   nhóm ngành hút tiền — lấy từ tin CafeF/Vietstock, chỉ khi tin có số liệu cụ thể
 ### 📅 Lịch sự kiện
 Mỗi sự kiện 1 dòng: "- **Giờ VN, ngày:** Sự kiện — dự báo / kỳ trước"
+"""
+
+# Chế độ gọn có dữ liệu tự động: bảng giá, dòng tiền, lịch kinh tế do code dựng và chèn thẳng vào
+# báo cáo, nên Agent Thu thập chỉ còn việc chọn lọc và tóm tắt tin.
+COLLECTOR_LEAN_SYSTEM = """\
+Bạn là **Agent Thu thập Thông tin Thị trường** trong một đội phân tích tài chính.
+Bạn nhận <du_lieu_tu_dong> gồm bảng giá, chỉ báo dòng tiền, lịch kinh tế và danh sách tin RSS (mỗi tin
+có mã như [T7]).
+
+Nhiệm vụ DUY NHẤT: chọn 8–12 tin có ảnh hưởng tới thị trường và tóm tắt bằng tiếng Việt.
+- Ưu tiên: NHTW và dữ liệu vĩ mô, biến động mạnh của USD / vàng / BTC / dầu, địa chính trị - thuế quan,
+  chứng khoán Việt Nam (VN-Index, khối ngoại, thanh khoản — chỉ khi tin có số liệu).
+- Bỏ: tin thủ tục hành chính, tin doanh nghiệp lẻ, quảng cáo, tin trùng nội dung.
+- Mỗi tin 1 dòng: "- **Tiêu đề ngắn:** 1 câu nêu dữ kiện và số liệu chính [T7]". Bắt buộc có mã ở cuối.
+- Chỉ ghi dữ kiện có trong tin; không phân tích, không thêm số liệu ngoài tin.
+- KHÔNG viết lại bảng giá, dòng tiền hay lịch sự kiện — hệ thống tự chèn các phần đó.
+
+Định dạng đầu ra: nhóm tin theo các tiêu đề nhỏ in đậm **Vĩ mô & NHTW**, **USD & ngoại hối**, **Vàng**,
+**Crypto**, **Hàng hoá**, **Địa chính trị**, **Việt Nam** (bỏ nhóm không có tin). Không có tiêu đề "###".
 """
 
 ANALYST_SYSTEM_TEMPLATE = """\
@@ -143,16 +170,25 @@ LEAN_NOTE = """
 CHẾ ĐỘ GỌN (bắt buộc): toàn bộ câu trả lời tối đa khoảng 500 từ. Chỉ giữ thông tin quan trọng nhất,
 dùng gạch đầu dòng ngắn và bảng nhỏ. Không lặp lại dữ liệu đầu vào."""
 LEAN_MAX_TOKENS = 1200
+# Phần Nhận định dài nhất nên dễ bị cắt giữa chừng: ép khuôn ngắn cho từng tài sản.
+STRATEGIST_LEAN_NOTE = """
+Để vừa giới hạn: mỗi tài sản USD / Vàng / Bitcoin tối đa 5 dòng (1 lý do, Hỗ trợ / Kháng cự, Kịch bản
+chính, Kịch bản ngược, Sai nếu). Mục Hàng hoá: Dầu, Đồng, Bạc, Nông sản mỗi loại ĐÚNG 1 dòng
+"- **Dầu (−3, giảm):** lý do chính; hỗ trợ / kháng cự". Bỏ mục Tương quan nếu hết chỗ."""
 
 
-def _lean(agent: Agent, lean: bool, max_tokens: int = LEAN_MAX_TOKENS) -> Agent:
+def _lean(agent: Agent, lean: bool, max_tokens: int = LEAN_MAX_TOKENS, extra: str = "") -> Agent:
     if lean:
-        agent.system += LEAN_NOTE
+        agent.system += LEAN_NOTE + extra
         agent.max_tokens = max_tokens
     return agent
 
 
-def build_collector(lean: bool = False) -> Agent:
+def build_collector(lean: bool = False, structured: bool = False) -> Agent:
+    """`structured`: đã có dữ liệu do code lấy — ở chế độ gọn, agent chỉ chọn lọc tin."""
+    if lean and structured:
+        return Agent(name="Thu thập", system=COLLECTOR_LEAN_SYSTEM + STYLE_GUIDE, effort="medium",
+                     max_tokens=LEAN_MAX_TOKENS)
     return _lean(Agent(
         name="Thu thập",
         system=COLLECTOR_SYSTEM + STYLE_GUIDE,
@@ -176,4 +212,4 @@ def build_strategist(lean: bool = False) -> Agent:
         system=STRATEGIST_SYSTEM_TEMPLATE.format(skill=load_financial_skill()) + STYLE_GUIDE,
         effort="high",
         web_search=6,
-    ), lean)
+    ), lean, extra=STRATEGIST_LEAN_NOTE)

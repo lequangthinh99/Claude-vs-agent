@@ -55,6 +55,7 @@ class AgentResult:
     output_tokens: int = 0
     turns: int = 0
     tool_calls: list[str] = field(default_factory=list)
+    truncated: bool = False  # model dừng vì chạm giới hạn output: phần cuối có thể bị cắt giữa câu
 
 
 @dataclass

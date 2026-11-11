@@ -24,20 +24,43 @@
 | Agent | File | Nhiệm vụ |
 |---|---|---|
 | Quản lý | `market_agents/manager.py` | Giao việc theo thứ tự, kiểm tra chất lượng, yêu cầu làm lại nếu thiếu (tối đa 1 lần/agent), tổng hợp báo cáo |
-| Thu thập | `market_agents/workers.py` | Tìm tin vĩ mô, NHTW, USD, vàng (cả SJC/nhẫn), BTC, dầu, kim loại, nông sản, lịch sự kiện — kèm nguồn |
+| Thu thập | `market_agents/workers.py` | Chọn lọc và tóm tắt tin vĩ mô, NHTW, USD, vàng, BTC, dầu, kim loại, nông sản, Việt Nam — kèm mã nguồn `[T..]` |
 | Phân tích | `market_agents/workers.py` | Kênh truyền dẫn, mức độ ảnh hưởng 1–5, đã phản ánh vào giá chưa, so sánh với báo cáo kỳ trước |
 | Nhận định | `market_agents/workers.py` | Điểm sức mạnh −5..+5, xu hướng ngắn/trung hạn, hỗ trợ/kháng cự, kịch bản có xác suất |
 
 **Skill tài chính** nằm ở `market_agents/skills/financial_analysis.md` (kênh truyền dẫn, thang điểm, động lực từng tài sản). Sửa file này để thay đổi cách agent phân tích — không cần sửa code.
 
-**Dữ liệu miễn phí:** trước khi các agent làm việc, `market_agents/datafeeds.py` tự lấy giá (Yahoo Finance) và tin RSS (CNBC, Investing.com, FXStreet, CoinDesk, Cointelegraph, OilPrice, Fed, VnExpress, CafeF) rồi đưa cho Agent Thu thập. Nhờ vậy hệ thống vẫn chạy khi gói AI miễn phí không cho dùng tìm kiếm web. Thêm/bớt nguồn bằng cách sửa danh sách `PRICE_SYMBOLS` và `NEWS_FEEDS`.
+**Dữ liệu miễn phí:** trước khi các agent làm việc, `market_agents/datafeeds.py` tự lấy:
+
+| Dữ liệu | Nguồn |
+|---|---|
+| Giá, chỉ báo dòng tiền (quỹ ETF) | Yahoo Finance |
+| VN-Index, VN30 | DNSE (Entrade) |
+| Lịch kinh tế 36 giờ tới (giờ VN, dự báo / kỳ trước) | ForexFactory |
+| Tin tức | RSS: CNBC, Investing.com, CoinDesk, Cointelegraph, OilPrice, Fed, VnExpress, CafeF, Vietstock |
+
+Thêm/bớt nguồn bằng cách sửa `PRICE_SYMBOLS`, `FLOW_SYMBOLS`, `NEWS_FEEDS`. Kiểm tra từng nguồn: Actions → Run workflow → mode `check-feeds`.
+
+**Phần nào do code làm, phần nào do AI viết** (để hạn chế số liệu bịa):
+
+- **Code dựng thẳng từ dữ liệu gốc:** bảng giá, lịch sự kiện, link nguồn của tin, bảng đối chiếu nhận định kỳ trước.
+  Mục nào không có dữ liệu thì bỏ hẳn (ví dụ không lấy được lịch → không có mục Lịch sự kiện).
+- **AI viết:** tóm tắt, chọn lọc tin, phân tích tác động, dòng tiền, nhận định và rủi ro. Agent trích nguồn bằng mã
+  `[T7]`; code đổi mã thành link thật và bỏ mã không tồn tại.
+- **Kiểm tra sau khi sinh:** câu trả lời bị cắt vì quá dài được chạy lại 1 lần với yêu cầu viết ngắn hơn (vẫn cắt thì
+  bỏ dòng dở); chữ Hán/Nhật/Hàn lẫn vào bị loại; ở chế độ gọn, lấy được dưới 8 mã giá thì không tạo bản tin.
+- **Chưa có:** giá vàng SJC/nhẫn trong nước và số liệu khối ngoại (các nguồn công khai chặn truy cập tự động).
+  Bảng giá có dòng *vàng thế giới quy đổi ra triệu đồng/lượng* để tự so với giá trong nước.
+
+**Chấm lại nhận định:** mỗi phiên lưu giá và điểm sức mạnh vào `reports/data/<ngày>-<phiên>.json`. Bản tin sau so chiều
+của điểm với biến động giá thực tế và ghi tỷ lệ đúng chiều của 30 phiên gần nhất (`market_agents/tracking.py`).
 
 Mỗi bản tin được lưu vào `reports/` và bản gần nhất được đưa cho agent Phân tích làm bối cảnh, để báo cáo theo dõi được **diễn biến** qua các phiên.
 
 ## Cấu trúc báo cáo
 
-1. Tóm tắt nhanh · 2. Bảng giá tham chiếu · 3. Tin chính & mức độ ảnh hưởng · 4. Phân tích diễn biến ·
-5. Nhận định USD · Vàng · BTC · Hàng hoá · 6. Lịch sự kiện · 7. Rủi ro & lưu ý
+1. Tóm tắt nhanh · 2. Nhận định USD · Vàng · BTC · Hàng hoá · 3. Đối chiếu nhận định kỳ trước · 4. Dòng tiền ·
+5. Phân tích tác động · 6. Tin chính (kèm link) · 7. Bảng giá · 8. Lịch sự kiện · 9. Rủi ro & lưu ý
 
 ## Chọn nhà cung cấp AI
 
